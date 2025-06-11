@@ -1,0 +1,7 @@
+function main() {
+    extern putchar;
+    var a;
+    a = 69;
+    putchar(a);
+}
+
