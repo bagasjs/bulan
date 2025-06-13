@@ -34,9 +34,8 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
     nob_sb_appendf(output, "    mov  rbp, rsp\n");
     nob_sb_appendf(output, "    sub rsp, 16\n");
 
-    size_t block_counter = 0;
     for(Block *b = fn->begin; b != NULL; b = b->next) {
-        nob_sb_appendf(output, ".block_%zu:\n", block_counter);
+        nob_sb_appendf(output, ".block_%zu:\n", b->index);
 
         for(size_t i = 0; i < b->count; ++i) {
             Inst inst = b->items[i];
@@ -170,8 +169,6 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                     break;
             }
         }
-
-        block_counter += 1;
     }
     nob_sb_appendf(output, "    mov rsp, rbp\n");
     nob_sb_appendf(output, "    pop rbp\n");

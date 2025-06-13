@@ -74,6 +74,9 @@ void destroy_function_blocks(Function *fn)
 void push_block(Function *fn)
 {
     Block *block = arena_alloc(fn->arena, sizeof(*block));
+    block->index = fn->blocks_count;
+    fn->blocks_count += 1;
+
     memset(block, 0, sizeof(*block));
     if(fn->begin == NULL) {
         assert(fn->end == NULL);
@@ -91,6 +94,11 @@ void push_inst(Function *fn, Inst inst)
     nob_da_append(b, inst);
 }
 
+void push_inst_to_block(Block *b, Inst inst)
+{
+    nob_da_append(b, inst);
+}
+
 const char *display_arg_kind(ArgKind kind)
 {
     switch(kind) {
@@ -101,6 +109,7 @@ const char *display_arg_kind(ArgKind kind)
         case ARG_STATIC_DATA: return "static data";
         default: assert(0 && "Unreachable: invalid arg kind at display_arg_kind");
     }
+    return NULL;
 }
 
 const char *display_inst_kind(InstKind kind)
@@ -165,6 +174,40 @@ void dump_function(Function *fn)
                     if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
                     printf("    FUNCALL(%s)\n", inst.args[0].name);
                     break;
+                case INST_SUB:
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                    printf("    SUB(LOCAL(%zu), ", inst.args[0].local_index);
+                    switch(inst.args[1].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu), ", inst.args[1].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld), ", inst.args[1].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu), ", inst.args[1].static_offset);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
+                    switch(inst.args[2].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu))\n", inst.args[2].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld))\n", inst.args[2].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu)\n", inst.args[2].static_offset);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
+                    break;
                 case INST_ADD:
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
                     printf("    ADD(LOCAL(%zu), ", inst.args[0].local_index);
@@ -191,7 +234,7 @@ void dump_function(Function *fn)
                             printf("VALUE(%lld))\n", inst.args[2].int_value);
                             break;
                         case ARG_STATIC_DATA:
-                            printf("STATIC(%zu), ", inst.args[2].static_offset);
+                            printf("STATIC(%zu)\n", inst.args[2].static_offset);
                             break;
                         default:
                             compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 

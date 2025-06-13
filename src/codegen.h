@@ -10,6 +10,7 @@ typedef enum {
     ARG_INT_VALUE,
     ARG_LOCAL_INDEX,
     ARG_STATIC_DATA,
+    ARG_JUMP_TABLE,
     ARG_NAME,
 } ArgKind;
 
@@ -50,6 +51,8 @@ typedef struct {
 typedef struct Block Block;
 struct Block {
     Block *next;
+    size_t index;
+
     Inst *items;
     size_t count;
     size_t capacity;
@@ -58,12 +61,14 @@ struct Block {
 typedef struct {
     Arena *arena;
     char *name;
+    size_t blocks_count;
     Block *begin;
     Block *end;
 } Function;
 
 void push_block(Function *fn);
 void push_inst(Function *fn, Inst inst);
+void push_inst_to_block(Block *b, Inst inst);
 void destroy_function_blocks(Function *fn);
 
 bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind);
