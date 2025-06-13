@@ -268,15 +268,15 @@ bool lexer_get_token(Lexer *lex)
         while((ch = lexer_peek_char(lex)) != 0) {
             if(isdigit(ch) != 0) {
                 lex->int_number *= 16;
-                lex->int_number += ((uint64_t)ch) - ((uint64_t)'0');
+                lex->int_number += ((int64_t)ch) - ((int64_t)'0');
                 lexer_skip_char(lex);
             } else if('a' <= ch && ch <= 'f') {
                 lex->int_number *= 16;
-                lex->int_number += ((uint64_t)ch) - ((uint64_t)'a') + 10;
+                lex->int_number += ((int64_t)ch) - ((int64_t)'a') + 10;
                 lexer_skip_char(lex);
             } else if('A' <= ch && ch <= 'F') {
                 lex->int_number *= 16;
-                lex->int_number += ((uint64_t)ch) - ((uint64_t)'A') + 10;
+                lex->int_number += ((int64_t)ch) - ((int64_t)'A') + 10;
                 lexer_skip_char(lex);
             } else {
                 break;
@@ -292,7 +292,7 @@ bool lexer_get_token(Lexer *lex)
             // TODO: check for overflows?
             if(isdigit(ch) != 0) {
                 lex->int_number *= 10;
-                lex->int_number += (uint64_t)ch - (uint64_t)'0';
+                lex->int_number += (int64_t)ch - (int64_t)'0';
                 lexer_skip_char(lex);
             } else {
                 break;

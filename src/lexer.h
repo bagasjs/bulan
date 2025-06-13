@@ -68,6 +68,7 @@ typedef enum {
     TOKEN_STRING_LIT,
     TOKEN_CHAR_LIT,
     TOKEN_INT_LIT,
+    TOKEN_FLOAT_LIT,
 
 #define X(TOK, STR) TOKEN_##TOK,
     // Punctuations
@@ -101,7 +102,8 @@ typedef struct {
     } string_storage;
     Token token;
     char *string;
-    uint64_t int_number;
+    int64_t int_number;
+    double real_number;
     Loc loc;
 } Lexer;
 
