@@ -1,3 +1,14 @@
+/*
+ * This is a C rewrite of the lexer from:
+ * https://github.com/tsoding/b/blob/main/src/lexer.rs
+ *
+ * Original author: Tsoding
+ * Licensed under the MIT License
+ * 
+ * Copyright 2025 Alexey Kutepov <reximkut@gmail.com> and the Contributors
+ * See LICENSE for the full license text.
+ */
+
 #ifndef LEXER_H_
 #define LEXER_H_
 
