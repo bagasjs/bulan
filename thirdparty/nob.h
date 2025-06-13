@@ -674,9 +674,9 @@ struct dirent
 
 typedef struct DIR DIR;
 
-static DIR *opendir(const char *dirpath);
-static struct dirent *readdir(DIR *dirp);
-static int closedir(DIR *dirp);
+DIR *opendir(const char *dirpath);
+struct dirent *readdir(DIR *dirp);
+int closedir(DIR *dirp);
 
 #endif // _WIN32
 // minirent.h HEADER END ////////////////////////////////////////

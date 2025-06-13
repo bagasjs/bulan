@@ -1,0 +1,9 @@
+function main() {
+    extern putchar;
+    putchar(72);
+    putchar(69);
+    putchar(76);
+    putchar(76);
+    putchar(79);
+    putchar(10);
+}

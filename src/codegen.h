@@ -27,9 +27,12 @@ typedef struct {
 
 typedef enum {
     /** Local Variable */
-    INST_LOCAL_INIT = 0,
+    INST_NOP,
+    INST_LOCAL_INIT,
     INST_LOCAL_ASSIGN,
 
+    INST_ADD,
+    INST_SUB,
     INST_EXTERN,
     INST_FUNCALL,
 } InstKind;
@@ -37,8 +40,7 @@ typedef enum {
 typedef struct {
     Loc loc;
     InstKind kind;
-    Arg a;
-    Arg b;
+    Arg args[3];
 } Inst;
 
 typedef struct Block Block;
@@ -60,8 +62,7 @@ void push_block(Function *fn);
 void push_inst(Function *fn, Inst inst);
 void destroy_function_blocks(Function *fn);
 
-bool expect_inst_arg_a(Inst inst, ArgKind kind);
-bool expect_inst_arg_b(Inst inst, ArgKind kind);
+bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind);
 const char *display_arg_kind(ArgKind kind);
 const char *display_inst_kind(InstKind kind);
 
@@ -70,8 +71,27 @@ void dump_function(Function *fn);
 
 // Target's Generator
 
+typedef enum {
+    _INVALID_TARGET = 0,
+    TARGET_IR,
+    TARGET_FASM_X86_64_WIN32,
+    TARGET_HTML_JS,
+
+    _COUNT_TARGETS,
+} Target;
+
+const char *display_target(Target target);
+
+void generate_program_prolog(Target target, Nob_String_Builder *output);
+void generate_program_epilog(Target target, Nob_String_Builder *output);
+bool generate_function(Target target, Nob_String_Builder *output, Function *fn);
+
 void generate_fasm_x86_64_win32_program_prolog(Nob_String_Builder *output);
 void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output);
 bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn);
+
+void generate_html_js_program_prolog(Nob_String_Builder *output);
+void generate_html_js_program_epilog(Nob_String_Builder *output);
+bool generate_html_js_function(Nob_String_Builder *output, Function *fn);
 
 #endif // CODEGEN_H_

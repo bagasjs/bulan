@@ -1,8 +1,11 @@
 function foo() {
     extern putchar;
     var a;
-    a = 66;
-    putchar(a);
+    var b;
+    a = 40;
+    b = 34;
+    putchar(a + b - 5);
+    putchar(10);
 }
 
 function main() {

@@ -4,6 +4,52 @@
 #include "nob.h"
 #include <stdlib.h>
 
+const char *display_target(Target target)
+{
+    switch(target) {
+        case TARGET_IR: return "ir";
+        case TARGET_FASM_X86_64_WIN32: return "fasm_x86-64_win32";
+        case TARGET_HTML_JS: return "html-js";
+        default:
+            assert(0 && "Invalid target in display_target");
+    }
+    return NULL;
+}
+
+void generate_program_prolog(Target target, Nob_String_Builder *output)
+{
+    switch(target) {
+        case TARGET_IR: return;
+        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_program_prolog(output);
+        case TARGET_HTML_JS: return generate_html_js_program_prolog(output);
+        default:
+            assert(0 && "Invalid target in generate_program_prolog");
+    }
+}
+
+void generate_program_epilog(Target target, Nob_String_Builder *output)
+{
+    switch(target) {
+        case TARGET_IR: return;
+        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_program_epilog(output);
+        case TARGET_HTML_JS: return generate_html_js_program_epilog(output);
+        default:
+            assert(0 && "Invalid target in generate_program_epilog");
+    }
+}
+
+bool generate_function(Target target, Nob_String_Builder *output, Function *fn)
+{
+    switch(target) {
+        case TARGET_IR: dump_function(fn);
+        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_function(output, fn);
+        case TARGET_HTML_JS: return generate_html_js_function(output, fn);
+        default:
+            assert(0 && "Invalid target in generate_program_epilog");
+    }
+    return false;
+}
+
 void destroy_function_blocks(Function *fn)
 {
     Block *b = fn->begin;
@@ -34,7 +80,6 @@ void push_inst(Function *fn, Inst inst)
     nob_da_append(b, inst);
 }
 
-
 const char *display_arg_kind(ArgKind kind)
 {
     switch(kind) {
@@ -49,41 +94,31 @@ const char *display_arg_kind(ArgKind kind)
 const char *display_inst_kind(InstKind kind)
 {
     switch(kind) {
+        case INST_NOP: return "NOP";
         case INST_LOCAL_INIT: return "LOCAL_INIT";
         case INST_LOCAL_ASSIGN: return "LOCAL_ASSIGN";
         case INST_EXTERN: return "EXTERN";
         case INST_FUNCALL: return "FUNCALL";
+        case INST_ADD: return "ADD";
+        case INST_SUB: return "SUB";
         default: assert(0 && "Unreachable: invalid instruction kind at display_inst_kind");
     }
 }
 
-bool expect_inst_arg_a(Inst inst, ArgKind kind)
+bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind)
 {
-    if(inst.a.kind != kind) {
-        compiler_diagf(inst.loc, "CODEGEN ERROR: Expecting argument 'a' of instruction '%s' to be '%s' but found '%s'",
+    assert(0 <= arg_index && arg_index <= 3);
+    if(inst.args[arg_index].kind != kind) {
+        compiler_diagf(inst.loc, "CODEGEN ERROR: Expecting argument '%d' of instruction '%s' to be '%s' but found '%s'",
+                arg_index,
                 display_inst_kind(inst.kind),
                 display_arg_kind(kind),
-                display_arg_kind(inst.a.kind));
+                display_arg_kind(inst.args[arg_index].kind));
         return false;
     }
-    if(kind == ARG_NAME && inst.a.name == NULL) {
-        compiler_diagf(inst.loc, "Generated instruction '%s' argument a is a name with value null", display_inst_kind(inst.kind));
-        return false;
-    }
-    return true;
-}
-
-bool expect_inst_arg_b(Inst inst, ArgKind kind)
-{
-    if(inst.b.kind != kind) {
-        compiler_diagf(inst.loc, "CODEGEN ERROR: Expecting argument 'b' of instruction '%s' to be '%s' but found '%s'",
-                display_inst_kind(inst.kind),
-                display_arg_kind(kind),
-                display_arg_kind(inst.b.kind));
-        return false;
-    }
-    if(kind == ARG_NAME && inst.b.name == NULL) {
-        compiler_diagf(inst.loc, "Generated instruction '%s' argument b is a name with value null", display_inst_kind(inst.kind));
+    if(kind == ARG_NAME && inst.args[arg_index].name == NULL) {
+        compiler_diagf(inst.loc, "Generated instruction '%s' argument '%d' is a name with value null", arg_index,
+                display_inst_kind(inst.kind));
         return false;
     }
     return true;
@@ -102,21 +137,49 @@ void dump_function(Function *fn)
             Inst inst = b->items[i];
             switch(inst.kind) {
                 case INST_LOCAL_INIT:
-                    if(!expect_inst_arg_a(inst, ARG_LOCAL_INDEX)) return;
-                    printf("    LOCAL_INIT(%zu)\n", inst.a.local_index);
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                    printf("    LOCAL_INIT(LOCAL(%zu))\n", inst.args[0].local_index);
                     break;
                 case INST_LOCAL_ASSIGN:
-                    if(!expect_inst_arg_a(inst, ARG_LOCAL_INDEX)) return;
-                    if(!expect_inst_arg_b(inst, ARG_INT_VALUE)) return;
-                    printf("    LOCAL_ASSIGN(%zu, %lld)\n", inst.a.local_index, inst.b.int_value);
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                    if(!expect_inst_arg(inst, 1, ARG_INT_VALUE)) return;
+                    printf("    LOCAL_ASSIGN(LOCAL(%zu), VALUE(%lld))\n", inst.args[0].local_index, inst.args[1].int_value);
                     break;
                 case INST_EXTERN:
-                    if(!expect_inst_arg_a(inst, ARG_NAME)) return;
-                    printf("    EXTERN(%s)\n", inst.a.name);
+                    if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
+                    printf("    EXTERN(%s)\n", inst.args[0].name);
                     break;
                 case INST_FUNCALL:
-                    if(!expect_inst_arg_a(inst, ARG_NAME)) return;
-                    printf("    FUNCALL(%s)\n", inst.a.name);
+                    if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
+                    printf("    FUNCALL(%s)\n", inst.args[0].name);
+                    break;
+                case INST_ADD:
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                    printf("    ADD(LOCAL(%zu), ", inst.args[0].local_index);
+                    switch(inst.args[1].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu), ", inst.args[0].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld), ", inst.args[0].int_value);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
+                    switch(inst.args[2].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu))\n", inst.args[0].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld))\n", inst.args[0].int_value);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
                     break;
                 default:
                     assert(0 && "Invalid instruction kind");
