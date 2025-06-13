@@ -30,6 +30,7 @@ typedef struct Compiler {
     Target target;
     Scope scope;
     Function func;
+    Nob_String_Builder static_data;
 } Compiler;
 
 Var *scope_find(const Scope *scope, const char *name)
@@ -59,7 +60,7 @@ Var *scope_alloc_local(Scope *scope, const char *name)
     return local;
 }
 
-bool compile_primary_expression(Arg *result_arg, Function *fn, Lexer *lex, const Scope *scope) 
+bool compile_primary_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com) 
 {
     assert(result_arg);
     lexer_get_token(lex);
@@ -67,9 +68,14 @@ bool compile_primary_expression(Arg *result_arg, Function *fn, Lexer *lex, const
         case TOKEN_INT_LIT:
             *result_arg = MAKE_INT_VALUE_ARG(lex->int_number);
             return true;
+        case TOKEN_STRING_LIT:
+            *result_arg = MAKE_STATIC_DATA_ARG(com->static_data.count);
+            nob_sb_append_cstr(&com->static_data, lex->string);
+            nob_da_append(&com->static_data, 0);
+            return true;
         case TOKEN_ID:
             {
-                Var *var = scope_find(scope, lex->string);
+                Var *var = scope_find(&com->scope, lex->string);
                 if(var == NULL) {
                     compiler_diagf(lex->loc, "Could not find %s in scope", lex->string);
                     return false;
@@ -96,25 +102,25 @@ InstKind token_to_binop_inst_kind(Token token)
     }
 }
 
-bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Scope *scope)
+bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com)
 {
     Arg lhs = {0};
-    if(!compile_primary_expression(&lhs, fn, lex, scope)) return false;
+    if(!compile_primary_expression(&lhs, fn, lex, com)) return false;
 
     ParsePoint saved_point = lex->parse_point;
     lexer_get_token(lex);
     InstKind inst_kind = token_to_binop_inst_kind(lex->token);
     if(inst_kind != INST_NOP) {
-        Arg result = MAKE_LOCAL_INDEX_ARG(scope->vars_count);
+        Arg result = MAKE_LOCAL_INDEX_ARG(com->scope.vars_count);
         push_inst(fn, (Inst) {
             .kind = INST_LOCAL_INIT,
             .args[0] = result,
         });
-        scope->vars_count += 1;
+        com->scope.vars_count += 1;
 
         while((inst_kind = token_to_binop_inst_kind(lex->token)) != INST_NOP) {
             Arg rhs = {0};
-            if(!compile_primary_expression(&rhs, fn, lex, scope)) return false;
+            if(!compile_primary_expression(&rhs, fn, lex, com)) return false;
             push_inst(fn, (Inst) {
                 .kind = inst_kind,
                 .args[0] = result,
@@ -134,7 +140,7 @@ bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Scope *scope)
     return true;
 }
 
-bool compile_function(Compiler *com, Function *fn, Lexer *lex, Scope *scope, Nob_String_Builder *output)
+bool compile_function(Compiler *com, Function *fn, Lexer *lex, Nob_String_Builder *output)
 {
     Loc top_loc = lex->loc;
     com->scope.count = 0;
@@ -153,11 +159,11 @@ bool compile_function(Compiler *com, Function *fn, Lexer *lex, Scope *scope, Nob
             case TOKEN_VAR:
                 {
                     lexer_get_and_expect_token(lex, TOKEN_ID);
-                    if(scope_find(scope, lex->string) != NULL) {
+                    if(scope_find(&com->scope, lex->string) != NULL) {
                         compiler_diagf(lex->loc, "Variable with name `%s` is already exists", lex->string);
                         return false;
                     }
-                    Var *var = scope_alloc_local(scope, arena_strdup(fn->arena, lex->string));
+                    Var *var = scope_alloc_local(&com->scope, arena_strdup(fn->arena, lex->string));
                     push_inst(fn, (Inst) {
                         .loc = stmt_loc,
                         .kind = INST_LOCAL_INIT,
@@ -171,7 +177,7 @@ bool compile_function(Compiler *com, Function *fn, Lexer *lex, Scope *scope, Nob
                     lexer_get_token(lex);
                     if(lex->token == TOKEN_EQ) {
                         // Assignment
-                        Var *var = scope_find(scope, name);
+                        Var *var = scope_find(&com->scope, name);
                         if(var == NULL) {
                             compiler_diagf(lex->loc, "Could not find %s in scope", name);
                             return false;
@@ -181,7 +187,7 @@ bool compile_function(Compiler *com, Function *fn, Lexer *lex, Scope *scope, Nob
                             return false;
                         }
                         Arg b = {0};
-                        if(!compile_expression(&b, fn, lex, scope)) return false;
+                        if(!compile_expression(&b, fn, lex, com)) return false;
                         push_inst(fn, (Inst){
                             .loc = stmt_loc,
                             .kind = INST_LOCAL_ASSIGN,
@@ -195,7 +201,7 @@ bool compile_function(Compiler *com, Function *fn, Lexer *lex, Scope *scope, Nob
                         lexer_get_token(lex);
                         if(lex->token != TOKEN_CPAREN) {
                             lex->parse_point = saved_point;
-                            if(!compile_expression(&b, fn, lex, scope)) return false;
+                            if(!compile_expression(&b, fn, lex, com)) return false;
                             lexer_get_and_expect_token(lex, TOKEN_CPAREN);
                         }
                         push_inst(fn, (Inst){
@@ -245,12 +251,13 @@ bool compile_program(Compiler *com, Nob_String_Builder *output, Lexer *lex)
     while(lexer_get_token(lex) && lex->token != TOKEN_EOF) {
         Function fn = {0};
         fn.arena = &com->arena;
-        bool ok = compile_function(com, &fn, lex, &com->scope, output);
+        bool ok = compile_function(com, &fn, lex, output);
         destroy_function_blocks(&fn);
         if(!ok) return false;
     }
     if(!lexer_get_and_expect_token(lex, TOKEN_EOF)) return false;
     generate_program_epilog(com->target, output);
+    generate_static_data(com->target, output, com->static_data);
     return true;
 }
 
@@ -302,6 +309,7 @@ int main(int argc, char **argv)
     char **rest_argv = flag_rest_argv();
 
     char *input = nob_shift(rest_argv, rest_argc);
+
     Nob_String_Builder input_data = {0};
     if(!nob_read_entire_file(input, &input_data)) {
         fprintf(stderr, "error: invalid input file %s\n", input);

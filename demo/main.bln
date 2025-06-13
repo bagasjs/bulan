@@ -9,5 +9,7 @@ function foo() {
 }
 
 function main() {
+    extern printf;
+    printf("Hello, World\n");
     foo();
 }

@@ -27,6 +27,17 @@ void generate_program_prolog(Target target, Nob_String_Builder *output)
     }
 }
 
+void generate_static_data(Target target, Nob_String_Builder *output, Nob_String_Builder static_data)
+{
+    switch(target) {
+        case TARGET_IR: return;
+        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_static_data(output, static_data);
+        default:
+            assert(0 && "Invalid target in generate_static_data");
+    }
+}
+
+
 void generate_program_epilog(Target target, Nob_String_Builder *output)
 {
     switch(target) {
@@ -87,6 +98,7 @@ const char *display_arg_kind(ArgKind kind)
         case ARG_INT_VALUE: return "integer value";
         case ARG_LOCAL_INDEX: return "local variable index";
         case ARG_NAME: return "name";
+        case ARG_STATIC_DATA: return "static data";
         default: assert(0 && "Unreachable: invalid arg kind at display_arg_kind");
     }
 }
@@ -158,10 +170,13 @@ void dump_function(Function *fn)
                     printf("    ADD(LOCAL(%zu), ", inst.args[0].local_index);
                     switch(inst.args[1].kind) {
                         case ARG_LOCAL_INDEX:
-                            printf("LOCAL(%zu), ", inst.args[0].local_index);
+                            printf("LOCAL(%zu), ", inst.args[1].local_index);
                             break;
                         case ARG_INT_VALUE:
-                            printf("VALUE(%lld), ", inst.args[0].int_value);
+                            printf("VALUE(%lld), ", inst.args[1].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu), ", inst.args[1].static_offset);
                             break;
                         default:
                             compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
@@ -170,10 +185,13 @@ void dump_function(Function *fn)
                     }
                     switch(inst.args[2].kind) {
                         case ARG_LOCAL_INDEX:
-                            printf("LOCAL(%zu))\n", inst.args[0].local_index);
+                            printf("LOCAL(%zu))\n", inst.args[2].local_index);
                             break;
                         case ARG_INT_VALUE:
-                            printf("VALUE(%lld))\n", inst.args[0].int_value);
+                            printf("VALUE(%lld))\n", inst.args[2].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu), ", inst.args[2].static_offset);
                             break;
                         default:
                             compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
