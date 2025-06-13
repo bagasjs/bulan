@@ -5,7 +5,7 @@ function main() {
     var c;
     a = 0;
     b = 1;
-    while(a < 1000000) {
+    while(a < 10) {
         printf("%d\n", a);
         c = a + b;
         a = b;

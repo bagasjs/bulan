@@ -10,24 +10,35 @@ typedef enum {
     ARG_INT_VALUE,
     ARG_LOCAL_INDEX,
     ARG_STATIC_DATA,
-    ARG_JUMP_TABLE,
+    ARG_BLOCK_INDEX,
+    ARG_LIST,
     ARG_NAME,
 } ArgKind;
 
+typedef struct Arg Arg;
 typedef struct {
+    Arg *items;
+    size_t count;
+    size_t capacity;
+} ArgList;
+struct Arg {
     ArgKind kind;
     union {
         size_t local_index;
+        size_t block_index;
         size_t static_offset;
         char *name;
         int64_t int_value;
+        ArgList list;
     };
-} Arg;
+};
 
 #define MAKE_NONE_ARG()             ((Arg){ .kind = ARG_NONE })
 #define MAKE_INT_VALUE_ARG(value)   ((Arg){ .kind = ARG_INT_VALUE,   .int_value     = (value) })
 #define MAKE_LOCAL_INDEX_ARG(value) ((Arg){ .kind = ARG_LOCAL_INDEX, .local_index   = (value) })
+#define MAKE_BLOCK_INDEX_ARG(value) ((Arg){ .kind = ARG_BLOCK_INDEX, .block_index   = (value) })
 #define MAKE_NAME_ARG(value)        ((Arg){ .kind = ARG_NAME,        .name          = (value) })
+#define MAKE_LIST_ARG(value)        ((Arg){ .kind = ARG_LIST,        .list          = (value) })
 #define MAKE_STATIC_DATA_ARG(offset)((Arg){ .kind = ARG_STATIC_DATA, .static_offset = (offset)})
 
 typedef enum {
@@ -35,11 +46,14 @@ typedef enum {
     INST_NOP,
     INST_LOCAL_INIT,
     INST_LOCAL_ASSIGN,
+    INST_JMP,
+    INST_JMP_IF,
+    INST_FUNCALL,
+    INST_EXTERN,
 
     INST_ADD,
     INST_SUB,
-    INST_EXTERN,
-    INST_FUNCALL,
+    INST_LT,
 } InstKind;
 
 typedef struct {
@@ -67,7 +81,7 @@ typedef struct {
 } Function;
 
 void push_block(Function *fn);
-void push_inst(Function *fn, Inst inst);
+Inst *push_inst(Function *fn, Inst inst);
 void push_inst_to_block(Block *b, Inst inst);
 void destroy_function_blocks(Function *fn);
 

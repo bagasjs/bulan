@@ -96,8 +96,9 @@ bool compile_primary_expression(Arg *result_arg, Function *fn, Lexer *lex, Compi
 InstKind token_to_binop_inst_kind(Token token)
 {
     switch(token) {
-        case TOKEN_PLUS: return INST_ADD;
+        case TOKEN_PLUS:  return INST_ADD;
         case TOKEN_MINUS: return INST_SUB;
+        case TOKEN_LESS:  return INST_LT;
         default: return INST_NOP;
     }
 }
@@ -142,9 +143,39 @@ bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com
 
 bool compile_block(Compiler *com, Function *fn, Lexer *lex)
 {
+    push_block(fn);
     while(lexer_get_token(lex) && lex->token != TOKEN_CCURLY) {
         Loc stmt_loc = lex->loc;
         switch(lex->token) {
+            case TOKEN_WHILE:
+                {
+                    lexer_get_and_expect_token(lex, TOKEN_OPAREN);
+                    push_block(fn);
+                    size_t start_block_index = fn->end->index;
+                    Arg arg = {0};
+                    if(!compile_expression(&arg, fn, lex, com)) return false;
+                    lexer_get_and_expect_token(lex, TOKEN_CPAREN);
+                    push_inst(fn, (Inst) {
+                            .loc  = stmt_loc,
+                            .kind = INST_JMP_IF,
+                            .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index + 1),
+                            .args[1] = arg,
+                            });
+                    Inst *inst = push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_JMP,
+                        .args[0] = MAKE_BLOCK_INDEX_ARG(0),
+                    });
+                    lexer_get_and_expect_token(lex, TOKEN_OCURLY);
+                    compile_block(com, fn, lex);
+                    push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_JMP,
+                        .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index),
+                    });
+                    push_block(fn);
+                    inst->args[0].block_index = fn->end->index;
+                } break;
             case TOKEN_VAR:
                 {
                     while(true) {
@@ -190,18 +221,26 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     } else if (lex->token == TOKEN_OPAREN) {
                         // Function call
                         Arg b = {0};
+                        ArgList args = {0};
                         ParsePoint saved_point = lex->parse_point;
                         lexer_get_token(lex);
-                        if(lex->token != TOKEN_CPAREN) {
+                        while(true) {
                             lex->parse_point = saved_point;
                             if(!compile_expression(&b, fn, lex, com)) return false;
-                            lexer_get_and_expect_token(lex, TOKEN_CPAREN);
+                            arena_da_append(&com->arena, &args, b);
+                            lexer_get_token(lex);
+                            if(lex->token == TOKEN_CPAREN) break;
+                            if(!lexer_expect_token(lex, TOKEN_COMMA)) return false;
+                            saved_point = lex->parse_point;
+                            lexer_get_token(lex);
                         }
+                        lexer_expect_token(lex, TOKEN_CPAREN);
+
                         push_inst(fn, (Inst){
                             .loc = stmt_loc,
                             .kind = INST_FUNCALL,
                             .args[0] = MAKE_NAME_ARG(name),
-                            .args[1] = b,
+                            .args[1] = MAKE_LIST_ARG(args),
                         });
                     } else {
                         compiler_diagf(stmt_loc, "Invalid follow up token after identifier %s", name);
@@ -241,7 +280,6 @@ bool compile_function(Compiler *com, Function *fn, Lexer *lex, Nob_String_Builde
     if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
     if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
     if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
-    push_block(fn);
     if(!compile_block(com, fn, lex)) return false;
     if(!lexer_expect_token(lex, TOKEN_CCURLY)) return false;
 

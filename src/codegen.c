@@ -74,10 +74,10 @@ void destroy_function_blocks(Function *fn)
 void push_block(Function *fn)
 {
     Block *block = arena_alloc(fn->arena, sizeof(*block));
+    memset(block, 0, sizeof(*block));
     block->index = fn->blocks_count;
     fn->blocks_count += 1;
 
-    memset(block, 0, sizeof(*block));
     if(fn->begin == NULL) {
         assert(fn->end == NULL);
         fn->begin = block;
@@ -88,10 +88,11 @@ void push_block(Function *fn)
     }
 }
 
-void push_inst(Function *fn, Inst inst)
+Inst *push_inst(Function *fn, Inst inst)
 {
     Block *b = fn->end;
     nob_da_append(b, inst);
+    return &b->items[b->count - 1];
 }
 
 void push_inst_to_block(Block *b, Inst inst)
@@ -105,8 +106,10 @@ const char *display_arg_kind(ArgKind kind)
         case ARG_NONE: return "none";
         case ARG_INT_VALUE: return "integer value";
         case ARG_LOCAL_INDEX: return "local variable index";
+        case ARG_BLOCK_INDEX: return "block index";
         case ARG_NAME: return "name";
         case ARG_STATIC_DATA: return "static data";
+        case ARG_LIST: return "list";
         default: assert(0 && "Unreachable: invalid arg kind at display_arg_kind");
     }
     return NULL;
@@ -118,10 +121,13 @@ const char *display_inst_kind(InstKind kind)
         case INST_NOP: return "NOP";
         case INST_LOCAL_INIT: return "LOCAL_INIT";
         case INST_LOCAL_ASSIGN: return "LOCAL_ASSIGN";
-        case INST_EXTERN: return "EXTERN";
+        case INST_JMP: return "JMP";
+        case INST_JMP_IF: return "JMP_IF";
         case INST_FUNCALL: return "FUNCALL";
+        case INST_EXTERN: return "EXTERN";
         case INST_ADD: return "ADD";
         case INST_SUB: return "SUB";
+        case INST_LT: return "LT";
         default: assert(0 && "Unreachable: invalid instruction kind at display_inst_kind");
     }
 }
@@ -138,7 +144,7 @@ bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind)
         return false;
     }
     if(kind == ARG_NAME && inst.args[arg_index].name == NULL) {
-        compiler_diagf(inst.loc, "Generated instruction '%s' argument '%d' is a name with value null", arg_index,
+        compiler_diagf(inst.loc, "CODEGEN ERROR: Generated instruction '%s' argument '%d' is a name with value null", arg_index,
                 display_inst_kind(inst.kind));
         return false;
     }
@@ -163,8 +169,23 @@ void dump_function(Function *fn)
                     break;
                 case INST_LOCAL_ASSIGN:
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                    if(!expect_inst_arg(inst, 1, ARG_INT_VALUE)) return;
-                    printf("    LOCAL_ASSIGN(LOCAL(%zu), VALUE(%lld))\n", inst.args[0].local_index, inst.args[1].int_value);
+                    printf("    LOCAL_ASSIGN(LOCAL(%zu), ", inst.args[0].local_index);
+                    switch(inst.args[1].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu))\n", inst.args[1].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld))\n", inst.args[1].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu))\n", inst.args[1].static_offset);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
                     break;
                 case INST_EXTERN:
                     if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
@@ -173,6 +194,62 @@ void dump_function(Function *fn)
                 case INST_FUNCALL:
                     if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
                     printf("    FUNCALL(%s)\n", inst.args[0].name);
+                    break;
+                case INST_JMP_IF:
+                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
+                    printf("    JMP_IF(BLOCK(%zu), ", inst.args[0].block_index);
+                    switch(inst.args[1].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu))\n", inst.args[1].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld))\n", inst.args[1].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu)\n", inst.args[1].static_offset);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
+                    break;
+                case INST_LT:
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                    printf("    LT(LOCAL(%zu), ", inst.args[0].local_index);
+                    switch(inst.args[1].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu), ", inst.args[1].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld), ", inst.args[1].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu), ", inst.args[1].static_offset);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
+                    switch(inst.args[2].kind) {
+                        case ARG_LOCAL_INDEX:
+                            printf("LOCAL(%zu))\n", inst.args[2].local_index);
+                            break;
+                        case ARG_INT_VALUE:
+                            printf("VALUE(%lld))\n", inst.args[2].int_value);
+                            break;
+                        case ARG_STATIC_DATA:
+                            printf("STATIC(%zu)\n", inst.args[2].static_offset);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[2].kind));
+                            break;
+                    }
                     break;
                 case INST_SUB:
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
@@ -188,7 +265,8 @@ void dump_function(Function *fn)
                             printf("STATIC(%zu), ", inst.args[1].static_offset);
                             break;
                         default:
-                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
                                     display_arg_kind(inst.args[1].kind));
                             break;
                     }
@@ -203,8 +281,9 @@ void dump_function(Function *fn)
                             printf("STATIC(%zu)\n", inst.args[2].static_offset);
                             break;
                         default:
-                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
-                                    display_arg_kind(inst.args[1].kind));
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[2].kind));
                             break;
                     }
                     break;
@@ -222,7 +301,8 @@ void dump_function(Function *fn)
                             printf("STATIC(%zu), ", inst.args[1].static_offset);
                             break;
                         default:
-                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
                                     display_arg_kind(inst.args[1].kind));
                             break;
                     }
@@ -237,10 +317,15 @@ void dump_function(Function *fn)
                             printf("STATIC(%zu)\n", inst.args[2].static_offset);
                             break;
                         default:
-                            compiler_diagf(inst.loc, "Invalid instruction argument 1 with type %s\n", 
-                                    display_arg_kind(inst.args[1].kind));
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[2].kind));
                             break;
                     }
+                    break;
+                case INST_JMP:
+                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
+                    printf("    JMP(BLOCK(%zu))\n", inst.args[0].block_index);
                     break;
                 default:
                     assert(0 && "Invalid instruction kind");
