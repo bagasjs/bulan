@@ -89,6 +89,7 @@ bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind);
 const char *display_arg_kind(ArgKind kind);
 const char *display_inst_kind(InstKind kind);
 
+void dump_arg(Arg arg, const char *end);
 void dump_function(Function *fn);
 
 
@@ -98,6 +99,7 @@ typedef enum {
     _INVALID_TARGET = 0,
     TARGET_IR,
     TARGET_FASM_X86_64_WIN32,
+    TARGET_NASM_X86_64_WIN32,
     TARGET_HTML_JS,
 
     _COUNT_TARGETS,
@@ -114,6 +116,11 @@ void generate_fasm_x86_64_win32_program_prolog(Nob_String_Builder *output);
 void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output);
 void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data);
 bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn);
+
+void generate_nasm_x86_64_win32_program_prolog(Nob_String_Builder *output);
+void generate_nasm_x86_64_win32_program_epilog(Nob_String_Builder *output);
+void generate_nasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data);
+bool generate_nasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn);
 
 void generate_html_js_program_prolog(Nob_String_Builder *output);
 void generate_html_js_program_epilog(Nob_String_Builder *output);

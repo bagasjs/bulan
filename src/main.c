@@ -225,6 +225,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         ParsePoint saved_point = lex->parse_point;
                         lexer_get_token(lex);
                         while(true) {
+                            if(lex->token == TOKEN_CPAREN) break;
                             lex->parse_point = saved_point;
                             if(!compile_expression(&b, fn, lex, com)) return false;
                             arena_da_append(&com->arena, &args, b);
@@ -266,6 +267,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                 } break;
         }
     }
+
     return true;
 }
 
@@ -315,7 +317,7 @@ void usage(FILE *stream)
     flag_print_options(stream);
 }
 
-#define DEFAULT_TARGET TARGET_FASM_X86_64_WIN32
+#define DEFAULT_TARGET TARGET_NASM_X86_64_WIN32
 Target parse_target(const char *target_str)
 {
     if(!target_str) return DEFAULT_TARGET;
@@ -353,6 +355,7 @@ int main(int argc, char **argv)
 
     int rest_argc = flag_rest_argc();
     char **rest_argv = flag_rest_argv();
+    Target target = parse_target(*target_str);
 
     char *input = nob_shift(rest_argv, rest_argc);
 
@@ -365,7 +368,7 @@ int main(int argc, char **argv)
     Nob_String_Builder output = {0};
     Lexer lex = lexer_new(input, input_data.items, input_data.items + input_data.count);
 
-    com.target = parse_target(*target_str);
+    com.target = target;
     const char *output_filepath = "a.s";
     if(com.target == TARGET_HTML_JS) {
         output_filepath = "a.html";

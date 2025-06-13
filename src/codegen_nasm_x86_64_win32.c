@@ -2,22 +2,21 @@
 #include <assert.h>
 #include "lexer.h"
 
-void generate_fasm_x86_64_win32_program_prolog(Nob_String_Builder *output)
+void generate_nasm_x86_64_win32_program_prolog(Nob_String_Builder *output)
 {
-    nob_sb_appendf(output, "format MS64 COFF\n");
-    nob_sb_appendf(output, "section \".text\" executable\n");
+    nob_sb_appendf(output, "section .text\n");
 }
 
-void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output)
+void generate_nasm_x86_64_win32_program_epilog(Nob_String_Builder *output)
 {
     assert(output);
 }
 
-void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data)
+void generate_nasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data)
 {
-    nob_sb_appendf(output, "section \".data\" executable\n");
+    nob_sb_appendf(output, "section .data\n");
+    nob_sb_appendf(output, "static_data: db ");
     if(static_data.count > 0) {
-        nob_sb_appendf(output, "static_data: db ");
         for(size_t i = 0; i < static_data.count; ++i) {
             if(i > 0) {
                 nob_sb_appendf(output, ", ");
@@ -28,9 +27,9 @@ void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_Stri
     }
 }
 
-bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn)
+bool generate_nasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn)
 {
-    nob_sb_appendf(output, "public %s\n", fn->name);
+    nob_sb_appendf(output, "global %s\n", fn->name);
     nob_sb_appendf(output, "%s:\n", fn->name);
     nob_sb_appendf(output, "    push rbp\n");
     nob_sb_appendf(output, "    mov  rbp, rsp\n");
@@ -48,7 +47,8 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                 case INST_LOCAL_INIT:
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
                     nob_sb_appendf(output, "    sub rsp, 8\n");
-                    nob_sb_appendf(output, "    mov QWORD [rbp - %zu], 0\n", (inst.args[0].local_index + 3) * 8);
+                    nob_sb_appendf(output, "    mov rax, 0\n");
+                    nob_sb_appendf(output, "    mov QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 3) * 8);
                     break;
                 case INST_LT:
                     {
@@ -158,9 +158,8 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                                     (inst.args[0].local_index + 3) * 8);
                             break;
                         case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    mov QWORD [rbp - %zu], %lld\n", 
-                                    (inst.args[0].local_index + 3) * 8, 
-                                    inst.args[1].int_value);
+                            nob_sb_appendf(output, "    mov rax, %lld\n", inst.args[1].int_value);
+                            nob_sb_appendf(output, "    mov QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 3) * 8);
                             break;
                         case ARG_STATIC_DATA:
                             nob_sb_appendf(output, "    mov rax, static_data\n");
@@ -202,7 +201,7 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                     break;
                 case INST_EXTERN:
                     if(!expect_inst_arg(inst, 0, ARG_NAME)) return false;
-                    nob_sb_appendf(output, "    extrn %s\n", inst.args[0].name);
+                    nob_sb_appendf(output, "    extern %s\n", inst.args[0].name);
                     break;
                 case INST_FUNCALL:
                     {

@@ -1,6 +1,5 @@
 #!/bin/sh
 
 ./build/blnc.exe $@
-fasm a.s a.obj
-clang -o a.exe a.obj
-./a.exe
+nasm -f win64 -g -F cv8 a.s -o ./build/a.obj
+clang -g -o ./build/a.exe ./build/a.obj
