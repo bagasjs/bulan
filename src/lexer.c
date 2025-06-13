@@ -45,6 +45,7 @@ const char *lexer_display_token(Token token)
         case TOKEN_STRING_LIT    : return "string";
         case TOKEN_CHAR_LIT      : return "character";
         case TOKEN_INT_LIT       : return "integer literal";
+        case TOKEN_FLOAT_LIT     : return "float literal";
 
         #define X(TOK, STR) case TOKEN_##TOK: return "`"STR"`";
             PUNCT_TOKEN_LIST
@@ -204,7 +205,7 @@ bool lexer_parse_string_into_storage(Lexer *lex, char delim)
                     break;
             }
 
-            nob_da_append(&lex->string_storage, ch);
+            nob_da_append(&lex->string_storage, nch);
             lexer_skip_char(lex);
         } else if(ch == delim) {
             break;
@@ -241,7 +242,7 @@ bool lexer_get_token(Lexer *lex)
         return false;
     }
 
-    for(int i = 0; i < NOB_ARRAY_LEN(PUNCTS); ++i) {
+    for(int i = 0; i < (int)NOB_ARRAY_LEN(PUNCTS); ++i) {
         TokenToLit t = PUNCTS[i];
         if(lexer_skip_prefix(lex, t.literal)) {
             lex->token = t.token;
@@ -263,7 +264,7 @@ bool lexer_get_token(Lexer *lex)
 
         nob_da_append(&lex->string_storage, 0);
         lex->string = lex->string_storage.items;
-        for(int i = 0; i < NOB_ARRAY_LEN(KEYWORDS); ++i) {
+        for(int i = 0; i < (int)NOB_ARRAY_LEN(KEYWORDS); ++i) {
             TokenToLit t = KEYWORDS[i];
             if(strcmp(lex->string, t.literal) == 0) {
                 lex->token = t.token;
@@ -358,7 +359,7 @@ bool lexer_get_token(Lexer *lex)
             return false;
         }
         lex->int_number = 0;
-        for(int i = 0; i < lex->string_storage.count; ++i) {
+        for(size_t i = 0; i < lex->string_storage.count; ++i) {
             lex->int_number *= 0x100;
             lex->int_number += lex->string_storage.items[i];
         }

@@ -2,16 +2,19 @@
 #include <assert.h>
 #include <src/lexer.h>
 
-static bool first_compilation = true;
-
-bool codegen_fasm_x86_64_win32(Nob_String_Builder *output, Function *fn)
+void generate_fasm_x86_64_win32_program_prolog(Nob_String_Builder *output)
 {
-    if(first_compilation) {
-        nob_sb_appendf(output, "format MS64 COFF\n");
-        nob_sb_appendf(output, "section \".text\" executable\n");
-        first_compilation = false;
-    }
+    nob_sb_appendf(output, "format MS64 COFF\n");
+    nob_sb_appendf(output, "section \".text\" executable\n");
+}
 
+void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output)
+{
+    assert(output);
+}
+
+bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn)
+{
     nob_sb_appendf(output, "public %s\n", fn->name);
     nob_sb_appendf(output, "%s:\n", fn->name);
     nob_sb_appendf(output, "    push rbp\n");
@@ -25,24 +28,22 @@ bool codegen_fasm_x86_64_win32(Nob_String_Builder *output, Function *fn)
         for(size_t i = 0; i < b->count; ++i) {
             Inst inst = b->items[i];
             switch(inst.kind) {
-                case INST_INIT_LOCAL:
-                    expect_inst_arg_a(inst, ARG_LOCAL_INDEX);
+                case INST_LOCAL_INIT:
+                    if(!expect_inst_arg_a(inst, ARG_LOCAL_INDEX)) return false;
                     nob_sb_appendf(output, "    sub rsp, 8\n");
                     nob_sb_appendf(output, "    mov QWORD [rbp - %zu], 0\n", (inst.a.local_index + 1) * 8);
                     break;
-                case INST_ASSIGN_LOCAL:
-                    expect_inst_arg_a(inst, ARG_LOCAL_INDEX);
-                    expect_inst_arg_b(inst, ARG_INT_VALUE);
+                case INST_LOCAL_ASSIGN:
+                    if(!expect_inst_arg_a(inst, ARG_LOCAL_INDEX)) return false;
+                    if(!expect_inst_arg_b(inst, ARG_INT_VALUE)) return false;
                     nob_sb_appendf(output, "    mov QWORD [rbp - %zu], %lld\n", (inst.a.local_index + 1) * 8, inst.b.int_value);
                     break;
                 case INST_EXTERN:
-                    expect_inst_arg_a(inst, ARG_NAME);
-                    if(inst.a.name == NULL) compiler_diagf(inst.loc, "Generated instruction %s has argument name with value null", 
-                            display_inst_kind(inst.kind));
+                    if(!expect_inst_arg_a(inst, ARG_NAME)) return false;
                     nob_sb_appendf(output, "    extrn %s\n", inst.a.name);
                     break;
                 case INST_FUNCALL:
-                    expect_inst_arg_a(inst, ARG_NAME);
+                    if(!expect_inst_arg_a(inst, ARG_NAME)) return false;
                     nob_sb_appendf(output, "    mov  rcx, QWORD[rbp - %zu]\n", (inst.b.local_index + 1) * 8);
                     nob_sb_appendf(output, "    call %s\n", inst.a.name);
                     break;
@@ -51,6 +52,9 @@ bool codegen_fasm_x86_64_win32(Nob_String_Builder *output, Function *fn)
 
         block_counter += 1;
     }
+    nob_sb_appendf(output, "    mov rsp, rbp\n");
+    nob_sb_appendf(output, "    pop rbp\n");
+    nob_sb_appendf(output, "    ret\n");
     return true;
 }
 

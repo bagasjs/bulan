@@ -27,8 +27,8 @@ typedef struct {
 
 typedef enum {
     /** Local Variable */
-    INST_INIT_LOCAL = 0,
-    INST_ASSIGN_LOCAL,
+    INST_LOCAL_INIT = 0,
+    INST_LOCAL_ASSIGN,
 
     INST_EXTERN,
     INST_FUNCALL,
@@ -50,7 +50,7 @@ struct Block {
 };
 
 typedef struct {
-    Arena arena;
+    Arena *arena;
     char *name;
     Block *begin;
     Block *end;
@@ -60,11 +60,18 @@ void push_block(Function *fn);
 void push_inst(Function *fn, Inst inst);
 void destroy_function_blocks(Function *fn);
 
-void expect_inst_arg_a(Inst inst, ArgKind kind);
-void expect_inst_arg_b(Inst inst, ArgKind kind);
+bool expect_inst_arg_a(Inst inst, ArgKind kind);
+bool expect_inst_arg_b(Inst inst, ArgKind kind);
 const char *display_arg_kind(ArgKind kind);
 const char *display_inst_kind(InstKind kind);
 
-bool codegen_fasm_x86_64_win32(Nob_String_Builder *output, Function *fn);
+void dump_function(Function *fn);
+
+
+// Target's Generator
+
+void generate_fasm_x86_64_win32_program_prolog(Nob_String_Builder *output);
+void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output);
+bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn);
 
 #endif // CODEGEN_H_
