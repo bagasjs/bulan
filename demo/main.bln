@@ -1,7 +1,11 @@
-function main() {
+function foo() {
     extern putchar;
     var a;
-    a = 69;
+    a = 66;
     putchar(a);
 }
 
+function main() {
+    foo();
+    main();
+}
