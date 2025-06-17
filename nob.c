@@ -33,7 +33,6 @@ int main(int argc, char **argv)
     nob_cmd_append(&cmd, "./src/lexer.c");
     nob_cmd_append(&cmd, "./src/codegen.c");
     nob_cmd_append(&cmd, "./src/codegen_fasm_x86_64_win32.c");
-    nob_cmd_append(&cmd, "./src/codegen_nasm_x86_64_win32.c");
     nob_cmd_append(&cmd, "./src/codegen_html_js.c");
     nob_cmd_append(&cmd, "./build/nob.o");
     nob_cmd_append(&cmd, "./build/arena.o");

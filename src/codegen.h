@@ -48,6 +48,7 @@ typedef enum {
     INST_LOCAL_ASSIGN,
     INST_JMP,
     INST_JMP_IF,
+    INST_BRANCH,
     INST_FUNCALL,
     INST_EXTERN,
 
@@ -99,7 +100,6 @@ typedef enum {
     _INVALID_TARGET = 0,
     TARGET_IR,
     TARGET_FASM_X86_64_WIN32,
-    TARGET_NASM_X86_64_WIN32,
     TARGET_HTML_JS,
 
     _COUNT_TARGETS,

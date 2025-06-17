@@ -9,7 +9,6 @@ const char *display_target(Target target)
     switch(target) {
         case TARGET_IR: return "ir";
         case TARGET_FASM_X86_64_WIN32: return "fasm_x86-64_win32";
-        case TARGET_NASM_X86_64_WIN32: return "nasm_x86-64_win32";
         case TARGET_HTML_JS: return "html-js";
         default:
             assert(0 && "Invalid target in display_target");
@@ -22,7 +21,6 @@ void generate_program_prolog(Target target, Nob_String_Builder *output)
     switch(target) {
         case TARGET_IR: return;
         case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_program_prolog(output);
-        case TARGET_NASM_X86_64_WIN32: return generate_nasm_x86_64_win32_program_prolog(output);
         case TARGET_HTML_JS: return generate_html_js_program_prolog(output);
         default:
             assert(0 && "Invalid target in generate_program_prolog");
@@ -34,7 +32,6 @@ void generate_static_data(Target target, Nob_String_Builder *output, Nob_String_
     switch(target) {
         case TARGET_IR: return;
         case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_static_data(output, static_data);
-        case TARGET_NASM_X86_64_WIN32: return generate_nasm_x86_64_win32_static_data(output, static_data);
         default:
             assert(0 && "Invalid target in generate_static_data");
     }
@@ -46,7 +43,6 @@ void generate_program_epilog(Target target, Nob_String_Builder *output)
     switch(target) {
         case TARGET_IR: return;
         case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_program_epilog(output);
-        case TARGET_NASM_X86_64_WIN32: return generate_nasm_x86_64_win32_program_epilog(output);
         case TARGET_HTML_JS: return generate_html_js_program_epilog(output);
         default:
             assert(0 && "Invalid target in generate_program_epilog");
@@ -58,7 +54,6 @@ bool generate_function(Target target, Nob_String_Builder *output, Function *fn)
     switch(target) {
         case TARGET_IR: dump_function(fn);
         case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_function(output, fn);
-        case TARGET_NASM_X86_64_WIN32: return generate_nasm_x86_64_win32_function(output, fn);
         case TARGET_HTML_JS: return generate_html_js_function(output, fn);
         default:
             assert(0 && "Invalid target in generate_program_epilog");
@@ -133,6 +128,7 @@ const char *display_inst_kind(InstKind kind)
         case INST_ADD: return "ADD";
         case INST_SUB: return "SUB";
         case INST_LT: return "LT";
+        case INST_BRANCH: return "BRANCH";
         default: assert(0 && "Unreachable: invalid instruction kind at display_inst_kind");
     }
 }
@@ -225,12 +221,6 @@ void dump_function(Function *fn)
                         dump_arg(inst.args[1], "\n");
                     }
                     break;
-                case INST_JMP_IF:
-                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
-                    printf("    JMP_IF BLOCK(%zu), ", inst.args[0].block_index);
-                    // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
-                    dump_arg(inst.args[1], "\n");
-                    break;
                 case INST_LT:
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
                     printf("    LT LOCAL(%zu), ", inst.args[0].local_index);
@@ -253,9 +243,23 @@ void dump_function(Function *fn)
                     dump_arg(inst.args[1], ", ");
                     dump_arg(inst.args[2], "\n");
                     break;
+                case INST_BRANCH:
+                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
+                    if(!expect_inst_arg(inst, 1, ARG_BLOCK_INDEX)) return;
+                    printf("    BRANCH ");
+                    dump_arg(inst.args[0], ", ");
+                    dump_arg(inst.args[1], ", ");
+                    dump_arg(inst.args[2], "\n");
+                    break;
                 case INST_JMP:
                     if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
                     printf("    JMP(BLOCK(%zu))\n", inst.args[0].block_index);
+                    break;
+                case INST_JMP_IF:
+                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
+                    printf("    JMP_IF BLOCK(%zu), ", inst.args[0].block_index);
+                    // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                    dump_arg(inst.args[1], "\n");
                     break;
                 default:
                     assert(0 && "Invalid instruction kind");

@@ -79,9 +79,9 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                                 break;
                         }
                         if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
-                        nob_sb_appendf(output, "    xor rdx, rdx\n");
-                        nob_sb_appendf(output, "    setl  dl\n");
-                        nob_sb_appendf(output, "    mov  QWORD [rbp - %zu], rdx\n", (inst.args[0].local_index + 3) * 8);
+                        nob_sb_appendf(output, "    mov   rax, 0\n");
+                        nob_sb_appendf(output, "    setl  al\n");
+                        nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 3) * 8);
                     }
                     break;
                 case INST_ADD:
@@ -179,6 +179,28 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                 case INST_JMP:
                     if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return false;
                     nob_sb_appendf(output, "    jmp .block_%zu\n", inst.args[0].block_index);
+                    break;
+                case INST_BRANCH:
+                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return false;
+                    if(!expect_inst_arg(inst, 1, ARG_BLOCK_INDEX)) return false;
+                    switch(inst.args[2].kind) {
+                        case ARG_LOCAL_INDEX:
+                            nob_sb_appendf(output, "    mov rax, QWORD [rbp - %zu]\n", 
+                                    (inst.args[1].local_index + 3) * 8);
+                            break;
+                        case ARG_INT_VALUE:
+                            nob_sb_appendf(output, "    mov rax, %lld\n", 
+                                    inst.args[1].int_value);
+                            break;
+                        default:
+                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                    display_inst_kind(inst.kind),
+                                    display_arg_kind(inst.args[1].kind));
+                            break;
+                    }
+                    nob_sb_appendf(output, "    cmp  rax, 1\n");
+                    nob_sb_appendf(output, "    je  .block_%zu\n", inst.args[0].block_index);
+                    nob_sb_appendf(output, "    jmp .block_%zu\n", inst.args[1].block_index);
                     break;
                 case INST_JMP_IF:
                     if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return false;

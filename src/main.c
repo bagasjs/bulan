@@ -155,16 +155,12 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     Arg arg = {0};
                     if(!compile_expression(&arg, fn, lex, com)) return false;
                     lexer_get_and_expect_token(lex, TOKEN_CPAREN);
-                    push_inst(fn, (Inst) {
-                            .loc  = stmt_loc,
-                            .kind = INST_JMP_IF,
-                            .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index + 1),
-                            .args[1] = arg,
-                            });
                     Inst *inst = push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
-                        .kind = INST_JMP,
-                        .args[0] = MAKE_BLOCK_INDEX_ARG(0),
+                        .kind = INST_BRANCH,
+                        .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index + 1),
+                        .args[1] = MAKE_BLOCK_INDEX_ARG(0),
+                        .args[2] = arg,
                     });
                     lexer_get_and_expect_token(lex, TOKEN_OCURLY);
                     compile_block(com, fn, lex);
@@ -174,7 +170,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index),
                     });
                     push_block(fn);
-                    inst->args[0].block_index = fn->end->index;
+                    inst->args[1].block_index = fn->end->index;
                 } break;
             case TOKEN_VAR:
                 {
@@ -317,7 +313,7 @@ void usage(FILE *stream)
     flag_print_options(stream);
 }
 
-#define DEFAULT_TARGET TARGET_NASM_X86_64_WIN32
+#define DEFAULT_TARGET TARGET_FASM_X86_64_WIN32
 Target parse_target(const char *target_str)
 {
     if(!target_str) return DEFAULT_TARGET;
