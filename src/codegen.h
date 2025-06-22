@@ -4,13 +4,14 @@
 #include "lexer.h"
 #include "nob.h"
 #include "arena.h"
+#include <stdint.h>
 
 typedef enum {
     ARG_NONE = 0,
     ARG_INT_VALUE,
     ARG_LOCAL_INDEX,
     ARG_STATIC_DATA,
-    ARG_BLOCK_INDEX,
+    ARG_LABEL,
     ARG_LIST,
     ARG_NAME,
 } ArgKind;
@@ -21,11 +22,12 @@ typedef struct {
     size_t count;
     size_t capacity;
 } ArgList;
+
 struct Arg {
     ArgKind kind;
     union {
         size_t local_index;
-        size_t block_index;
+        size_t label;
         size_t static_offset;
         char *name;
         int64_t int_value;
@@ -36,25 +38,43 @@ struct Arg {
 #define MAKE_NONE_ARG()             ((Arg){ .kind = ARG_NONE })
 #define MAKE_INT_VALUE_ARG(value)   ((Arg){ .kind = ARG_INT_VALUE,   .int_value     = (value) })
 #define MAKE_LOCAL_INDEX_ARG(value) ((Arg){ .kind = ARG_LOCAL_INDEX, .local_index   = (value) })
-#define MAKE_BLOCK_INDEX_ARG(value) ((Arg){ .kind = ARG_BLOCK_INDEX, .block_index   = (value) })
+#define MAKE_LABEL_ARG(value)       ((Arg){ .kind = ARG_LABEL,       .label         = (value) })
 #define MAKE_NAME_ARG(value)        ((Arg){ .kind = ARG_NAME,        .name          = (value) })
 #define MAKE_LIST_ARG(value)        ((Arg){ .kind = ARG_LIST,        .list          = (value) })
 #define MAKE_STATIC_DATA_ARG(offset)((Arg){ .kind = ARG_STATIC_DATA, .static_offset = (offset)})
 
 typedef enum {
-    /** Local Variable */
     INST_NOP,
-    INST_LOCAL_INIT,
-    INST_LOCAL_ASSIGN,
-    INST_JMP,
-    INST_JMP_IF,
-    INST_BRANCH,
-    INST_FUNCALL,
+
+    // deprecated?
     INST_EXTERN,
 
+    // deprecated?
+    INST_LOCAL_INIT,
+
+    // assign arg[0].local, arg[1]
+    INST_LOCAL_ASSIGN,
+
+    // jmp arg[0].block
+    INST_JMP,
+
+    // branch arg[0].block, arg[1].block, arg[2]
+    INST_BRANCH,
+
+    // funcall arg[0].local, arg[1].name, arg[2].list
+    INST_FUNCALL,
+
+    // add arg[0].local, arg[1], arg[2]
     INST_ADD,
+
+    // sub arg[0].local, arg[1], arg[2]
     INST_SUB,
+
+    // lt  arg[0].local, arg[1], arg[2]
     INST_LT,
+
+    // label arg[0].label_index
+    INST_LABEL,
 } InstKind;
 
 typedef struct {
@@ -63,28 +83,18 @@ typedef struct {
     Arg args[3];
 } Inst;
 
-typedef struct Block Block;
-struct Block {
-    Block *next;
-    size_t index;
-
+typedef struct {
+    Loc loc;
     Inst *items;
     size_t count;
     size_t capacity;
-};
-
-typedef struct {
-    Arena *arena;
     char *name;
-    size_t blocks_count;
-    Block *begin;
-    Block *end;
+    size_t locals_count;
+    size_t labels_count;
 } Function;
 
-void push_block(Function *fn);
+size_t alloc_local(Function *fn);
 Inst *push_inst(Function *fn, Inst inst);
-void push_inst_to_block(Block *b, Inst inst);
-void destroy_function_blocks(Function *fn);
 
 bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind);
 const char *display_arg_kind(ArgKind kind);
@@ -105,25 +115,42 @@ typedef enum {
     _COUNT_TARGETS,
 } Target;
 
+typedef enum {
+    VAR_LOCAL  = 0,
+    VAR_EXTERN,
+} VarStorage;
+
+typedef struct {
+    const char *name;
+    size_t index;
+    VarStorage storage;
+} Var;
+
+typedef struct Compiler {
+    Arena arena;
+    Target target;
+    Function func;
+    Nob_String_Builder static_data;
+
+    struct {
+        Function *items;
+        size_t count;
+        size_t capacity;
+    } funcs;
+
+    struct {
+        Var *items;
+        size_t count;
+        size_t capacity;
+    } vars;
+} Compiler;
+
+
 const char *display_target(Target target);
 
-void generate_program_prolog(Target target, Nob_String_Builder *output);
-void generate_program_epilog(Target target, Nob_String_Builder *output);
-bool generate_function(Target target, Nob_String_Builder *output, Function *fn);
-void generate_static_data(Target target, Nob_String_Builder *output, Nob_String_Builder static_data);
+void emit_target_output(Target target, Nob_String_Builder output);
 
-void generate_fasm_x86_64_win32_program_prolog(Nob_String_Builder *output);
-void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output);
-void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data);
-bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn);
-
-void generate_nasm_x86_64_win32_program_prolog(Nob_String_Builder *output);
-void generate_nasm_x86_64_win32_program_epilog(Nob_String_Builder *output);
-void generate_nasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data);
-bool generate_nasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn);
-
-void generate_html_js_program_prolog(Nob_String_Builder *output);
-void generate_html_js_program_epilog(Nob_String_Builder *output);
-bool generate_html_js_function(Nob_String_Builder *output, Function *fn);
+bool generate_x86_64_program(Compiler *com, Nob_String_Builder *output);
+bool generate_program(Compiler *com, Nob_String_Builder *output);
 
 #endif // CODEGEN_H_

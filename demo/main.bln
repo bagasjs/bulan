@@ -1,15 +1,15 @@
-function foo() {
-    extern putchar;
-    var a;
-    var b;
+function foo() 
+    : a, b, color
+{
     a = 40;
     b = 34;
     putchar(a + b - 5);
     putchar(10);
 }
 
-function main() {
+function main()
+{
     extern printf;
-    printf("Hello, World\n");
+    printf("Hello, %s\n", "World");
     foo();
 }

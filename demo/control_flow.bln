@@ -1,0 +1,26 @@
+// TODO: better extern system
+// extern var stdin;
+// extern var stderr;
+// extern var stdout;
+// extern function fprintf(stream, fmt, ...);
+
+function main() 
+    : a, c 
+{
+    // Change the value of a to get different result
+    a = 1;
+    c = 0;
+
+    if(a > 10) {
+        c = -1;
+    } else {
+        c = 1;
+    }
+
+    while(a != 10) {
+        fprintf(stdout, "a is %d", c);
+        a = a + c;
+    }
+
+    return 0;
+}

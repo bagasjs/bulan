@@ -9,95 +9,41 @@ const char *display_target(Target target)
     switch(target) {
         case TARGET_IR: return "ir";
         case TARGET_FASM_X86_64_WIN32: return "fasm_x86-64_win32";
-        case TARGET_HTML_JS: return "html-js";
+        // case TARGET_HTML_JS: return "html-js";
         default:
             assert(0 && "Invalid target in display_target");
     }
     return NULL;
 }
 
-void generate_program_prolog(Target target, Nob_String_Builder *output)
+bool generate_program(Compiler *com, Nob_String_Builder *output)
 {
-    switch(target) {
-        case TARGET_IR: return;
-        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_program_prolog(output);
-        case TARGET_HTML_JS: return generate_html_js_program_prolog(output);
+    switch(com->target) {
+        case TARGET_IR: 
+            {
+                for(size_t i = 0; i < com->funcs.count; ++i) {
+                    dump_function(&com->funcs.items[i]);
+                }
+            } break;
+        case TARGET_FASM_X86_64_WIN32:
+            return generate_x86_64_program(com, output);
         default:
-            assert(0 && "Invalid target in generate_program_prolog");
+            assert(0 && "Invalid target in generate_program");
     }
-}
-
-void generate_static_data(Target target, Nob_String_Builder *output, Nob_String_Builder static_data)
-{
-    switch(target) {
-        case TARGET_IR: return;
-        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_static_data(output, static_data);
-        default:
-            assert(0 && "Invalid target in generate_static_data");
-    }
-}
-
-
-void generate_program_epilog(Target target, Nob_String_Builder *output)
-{
-    switch(target) {
-        case TARGET_IR: return;
-        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_program_epilog(output);
-        case TARGET_HTML_JS: return generate_html_js_program_epilog(output);
-        default:
-            assert(0 && "Invalid target in generate_program_epilog");
-    }
-}
-
-bool generate_function(Target target, Nob_String_Builder *output, Function *fn)
-{
-    switch(target) {
-        case TARGET_IR: dump_function(fn);
-        case TARGET_FASM_X86_64_WIN32: return generate_fasm_x86_64_win32_function(output, fn);
-        case TARGET_HTML_JS: return generate_html_js_function(output, fn);
-        default:
-            assert(0 && "Invalid target in generate_program_epilog");
-    }
-    return false;
-}
-
-void destroy_function_blocks(Function *fn)
-{
-    Block *b = fn->begin;
-    while(b != NULL) {
-        Block *b0 = b;
-        b = b->next;
-        nob_da_free(*b0);
-    }
-}
-
-void push_block(Function *fn)
-{
-    Block *block = arena_alloc(fn->arena, sizeof(*block));
-    memset(block, 0, sizeof(*block));
-    block->index = fn->blocks_count;
-    fn->blocks_count += 1;
-
-    if(fn->begin == NULL) {
-        assert(fn->end == NULL);
-        fn->begin = block;
-        fn->end = block;
-    } else {
-        fn->end->next = block;
-        fn->end = block;
-    }
+    return true;
 }
 
 Inst *push_inst(Function *fn, Inst inst)
 {
-    Block *b = fn->end;
-    nob_da_append(b, inst);
-    return &b->items[b->count - 1];
+    nob_da_append(fn, inst);
+    return &fn->items[fn->count - 1];
 }
 
-void push_inst_to_block(Block *b, Inst inst)
+size_t alloc_local(Function *fn)
 {
-    nob_da_append(b, inst);
+    size_t local = fn->locals_count;
+    fn->locals_count += 1;
+    return local;
 }
 
 const char *display_arg_kind(ArgKind kind)
@@ -106,7 +52,7 @@ const char *display_arg_kind(ArgKind kind)
         case ARG_NONE: return "none";
         case ARG_INT_VALUE: return "integer value";
         case ARG_LOCAL_INDEX: return "local variable index";
-        case ARG_BLOCK_INDEX: return "block index";
+        case ARG_LABEL: return "label";
         case ARG_NAME: return "name";
         case ARG_STATIC_DATA: return "static data";
         case ARG_LIST: return "list";
@@ -122,13 +68,13 @@ const char *display_inst_kind(InstKind kind)
         case INST_LOCAL_INIT: return "LOCAL_INIT";
         case INST_LOCAL_ASSIGN: return "LOCAL_ASSIGN";
         case INST_JMP: return "JMP";
-        case INST_JMP_IF: return "JMP_IF";
         case INST_FUNCALL: return "FUNCALL";
         case INST_EXTERN: return "EXTERN";
         case INST_ADD: return "ADD";
         case INST_SUB: return "SUB";
         case INST_LT: return "LT";
         case INST_BRANCH: return "BRANCH";
+        case INST_LABEL: return "LABEL";
         default: assert(0 && "Unreachable: invalid instruction kind at display_inst_kind");
     }
 }
@@ -162,8 +108,8 @@ void dump_arg(Arg arg, const char *end)
         case ARG_NONE:
             printf("NONE%s", end);
             break;
-        case ARG_BLOCK_INDEX:
-            printf("BLOCK(%zu)%s", arg.local_index, end);
+        case ARG_LABEL:
+            printf("LABEL(%zu)%s", arg.local_index, end);
             break;
         case ARG_LOCAL_INDEX:
             printf("LOCAL(%zu)%s", arg.local_index, end);
@@ -190,81 +136,74 @@ void dump_arg(Arg arg, const char *end)
 
 void dump_function(Function *fn)
 {
-    printf("%s()\n", fn->name);
+    printf("%s() [locals=%zu]\n", fn->name, fn->locals_count);
     size_t block_counter = 0;
-    for(Block *b = fn->begin; b != NULL; b = b->next) {
-        printf("block_%zu:\n", block_counter);
-        for(size_t i = 0; i < b->count; ++i) {
-            Inst inst = b->items[i];
-            switch(inst.kind) {
-                case INST_LOCAL_INIT:
-                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                    printf("    LOCAL_INIT LOCAL(%zu)\n", inst.args[0].local_index);
-                    break;
-                case INST_LOCAL_ASSIGN:
-                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                    printf("    LOCAL_ASSIGN ");
-                    dump_arg(inst.args[0], ", ");
-                    dump_arg(inst.args[1], "\n");
-                    break;
-                case INST_EXTERN:
+    for(size_t i = 0; i < fn->count; ++i) {
+        Inst inst = fn->items[i];
+        switch(inst.kind) {
+            case INST_LABEL:
+                printf("LABEL(%zu):\n", inst.args[0].label);
+                break;
+            case INST_LOCAL_INIT:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    LOCAL_INIT LOCAL(%zu)\n", inst.args[0].local_index);
+                break;
+            case INST_LOCAL_ASSIGN:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    LOCAL_ASSIGN ");
+                dump_arg(inst.args[0], ", ");
+                dump_arg(inst.args[1], "\n");
+                break;
+            case INST_EXTERN:
+                if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
+                printf("    EXTERN ");
+                dump_arg(inst.args[0], "\n");
+                break;
+            case INST_FUNCALL:
+                {
                     if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
-                    printf("    EXTERN ");
-                    dump_arg(inst.args[0], "\n");
-                    break;
-                case INST_FUNCALL:
-                    {
-                        if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
-                        if(!expect_inst_arg(inst, 1, ARG_LIST)) return;
-                        printf("    FUNCALL ");
-                        dump_arg(inst.args[0], ", ");
-                        dump_arg(inst.args[1], "\n");
-                    }
-                    break;
-                case INST_LT:
-                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                    printf("    LT LOCAL(%zu), ", inst.args[0].local_index);
-                    // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
-                    // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
-                    dump_arg(inst.args[1], ", ");
-                    dump_arg(inst.args[2], "\n");
-                    break;
-                case INST_SUB:
-                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                    printf("    SUB LOCAL(%zu), ", inst.args[0].local_index);
-                    // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
-                    // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
-                    dump_arg(inst.args[1], ", ");
-                    dump_arg(inst.args[2], "\n");
-                    break;
-                case INST_ADD:
-                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                    printf("    ADD LOCAL(%zu), ", inst.args[0].local_index);
-                    dump_arg(inst.args[1], ", ");
-                    dump_arg(inst.args[2], "\n");
-                    break;
-                case INST_BRANCH:
-                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
-                    if(!expect_inst_arg(inst, 1, ARG_BLOCK_INDEX)) return;
-                    printf("    BRANCH ");
+                    if(!expect_inst_arg(inst, 1, ARG_LIST)) return;
+                    printf("    FUNCALL ");
                     dump_arg(inst.args[0], ", ");
-                    dump_arg(inst.args[1], ", ");
-                    dump_arg(inst.args[2], "\n");
-                    break;
-                case INST_JMP:
-                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
-                    printf("    JMP(BLOCK(%zu))\n", inst.args[0].block_index);
-                    break;
-                case INST_JMP_IF:
-                    if(!expect_inst_arg(inst, 0, ARG_BLOCK_INDEX)) return;
-                    printf("    JMP_IF BLOCK(%zu), ", inst.args[0].block_index);
-                    // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
                     dump_arg(inst.args[1], "\n");
-                    break;
-                default:
-                    assert(0 && "Invalid instruction kind");
-            }
+                }
+                break;
+            case INST_LT:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    LT LOCAL(%zu), ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_SUB:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    SUB LOCAL(%zu), ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_ADD:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    ADD LOCAL(%zu), ", inst.args[0].local_index);
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_BRANCH:
+                if(!expect_inst_arg(inst, 0, ARG_LABEL)) return;
+                if(!expect_inst_arg(inst, 1, ARG_LABEL)) return;
+                printf("    BRANCH ");
+                dump_arg(inst.args[0], ", ");
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_JMP:
+                if(!expect_inst_arg(inst, 0, ARG_LABEL)) return;
+                printf("    JMP(BLOCK(%zu))\n", inst.args[0].label);
+                break;
+            default:
+                assert(0 && "Invalid instruction kind");
         }
-        block_counter += 1;
     }
 }

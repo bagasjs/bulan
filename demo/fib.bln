@@ -1,11 +1,10 @@
-function main() {
+function main() 
+    : a, b, c
+{
     extern printf;
-    var a;
-    var b;
-    var c;
     a = 0;
     b = 1;
-    while(a < 10) {
+    while(a < 30) {
         printf("%d\n", a);
         c = a + b;
         a = b;

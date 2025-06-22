@@ -6,57 +6,29 @@
 #include "codegen.h"
 #include "flag.h"
 
-typedef enum {
-    VAR_LOCAL  = 0,
-    VAR_EXTERN,
-} VarStorage;
-
-typedef struct {
-    const char *name;
-    size_t index;
-    VarStorage storage;
-} Var;
-
-typedef struct Scope Scope;
-struct Scope {
-    size_t vars_count;
-    Var *items;
-    size_t count;
-    size_t capacity;
-};
-
-typedef struct Compiler {
-    Arena arena;
-    Target target;
-    Scope scope;
-    Function func;
-    Nob_String_Builder static_data;
-} Compiler;
-
-Var *scope_find(const Scope *scope, const char *name)
+Var *find_var(const Compiler *com, const char *name)
 {
-    for(size_t i = 0; i < scope->count; ++i) {
-        if(strcmp(scope->items[i].name, name) == 0) {
-            return &scope->items[i];
+    for(size_t i = 0; i < com->vars.count; ++i) {
+        if(strcmp(com->vars.items[i].name, name) == 0) {
+            return &com->vars.items[i];
         }
     }
     return NULL;
 }
 
-Var *scope_alloc(Scope *scope, const char *name)
+Var *alloc_var(Compiler *com, const char *name)
 {
-    Var b = (Var){ .name = name, .index = scope->count };
-    nob_da_append(scope, b);
-    return &scope->items[scope->count - 1];
+    Var b = (Var){ .name = name, .index = com->vars.count };
+    nob_da_append(&com->vars, b);
+    return &com->vars.items[com->vars.count - 1];
 }
 
-Var *scope_alloc_local(Scope *scope, const char *name)
+Var *alloc_var_local(Compiler *com, const char *name, size_t index)
 {
-    Var *local = scope_alloc(scope, name);
+    Var *local = alloc_var(com, name);
     local->name = name;
     local->storage = VAR_LOCAL;
-    local->index = scope->vars_count;
-    scope->vars_count += 1;
+    local->index = index;
     return local;
 }
 
@@ -75,7 +47,7 @@ bool compile_primary_expression(Arg *result_arg, Function *fn, Lexer *lex, Compi
             return true;
         case TOKEN_ID:
             {
-                Var *var = scope_find(&com->scope, lex->string);
+                Var *var = find_var(com, lex->string);
                 if(var == NULL) {
                     compiler_diagf(lex->loc, "Could not find %s in scope", lex->string);
                     return false;
@@ -112,13 +84,7 @@ bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com
     lexer_get_token(lex);
     InstKind inst_kind = token_to_binop_inst_kind(lex->token);
     if(inst_kind != INST_NOP) {
-        Arg result = MAKE_LOCAL_INDEX_ARG(com->scope.vars_count);
-        push_inst(fn, (Inst) {
-            .kind = INST_LOCAL_INIT,
-            .args[0] = result,
-        });
-        com->scope.vars_count += 1;
-
+        Arg result = MAKE_LOCAL_INDEX_ARG(alloc_local(fn));
         while((inst_kind = token_to_binop_inst_kind(lex->token)) != INST_NOP) {
             Arg rhs = {0};
             if(!compile_primary_expression(&rhs, fn, lex, com)) return false;
@@ -143,61 +109,57 @@ bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com
 
 bool compile_block(Compiler *com, Function *fn, Lexer *lex)
 {
-    push_block(fn);
     while(lexer_get_token(lex) && lex->token != TOKEN_CCURLY) {
         Loc stmt_loc = lex->loc;
         switch(lex->token) {
             case TOKEN_WHILE:
                 {
+                    size_t start_label = fn->labels_count;
+                    size_t body_label  = fn->labels_count + 1;
+                    size_t end_label   = fn->labels_count + 2;
                     lexer_get_and_expect_token(lex, TOKEN_OPAREN);
-                    push_block(fn);
-                    size_t start_block_index = fn->end->index;
+                    push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_LABEL,
+                        .args[0] = MAKE_LABEL_ARG(start_label),
+                    });
+
                     Arg arg = {0};
                     if(!compile_expression(&arg, fn, lex, com)) return false;
-                    lexer_get_and_expect_token(lex, TOKEN_CPAREN);
+                    if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
                     Inst *inst = push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_BRANCH,
-                        .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index + 1),
-                        .args[1] = MAKE_BLOCK_INDEX_ARG(0),
+                        .args[0] = MAKE_LABEL_ARG(body_label),
+                        .args[1] = MAKE_LABEL_ARG(end_label),
                         .args[2] = arg,
                     });
-                    lexer_get_and_expect_token(lex, TOKEN_OCURLY);
-                    compile_block(com, fn, lex);
+                    if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
+                    push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_LABEL,
+                        .args[0] = MAKE_LABEL_ARG(body_label),
+                    });
+                    if(!compile_block(com, fn, lex)) return false;
                     push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_JMP,
-                        .args[0] = MAKE_BLOCK_INDEX_ARG(start_block_index),
+                        .args[0] = MAKE_LABEL_ARG(start_label),
                     });
-                    push_block(fn);
-                    inst->args[1].block_index = fn->end->index;
-                } break;
-            case TOKEN_VAR:
-                {
-                    while(true) {
-                        lexer_get_and_expect_token(lex, TOKEN_ID);
-                        if(scope_find(&com->scope, lex->string) != NULL) {
-                            compiler_diagf(lex->loc, "Variable with name `%s` is already exists", lex->string);
-                            return false;
-                        }
-                        Var *var = scope_alloc_local(&com->scope, arena_strdup(fn->arena, lex->string));
-                        push_inst(fn, (Inst) {
-                            .loc = stmt_loc,
-                            .kind = INST_LOCAL_INIT,
-                            .args[0] = MAKE_LOCAL_INDEX_ARG(var->index),
-                        });
-                        lexer_get_token(lex);
-                        if(lex->token == TOKEN_SEMICOLON) break;
-                        if(!lexer_expect_token(lex, TOKEN_COMMA)) return false;
-                    }
+                    push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_LABEL,
+                        .args[0] = MAKE_LABEL_ARG(end_label),
+                    });
+                    fn->labels_count += 3;
                 } break;
             case TOKEN_ID:
                 {
-                    char *name = arena_strdup(fn->arena, lex->string);
+                    char *name = arena_strdup(&com->arena, lex->string);
                     lexer_get_token(lex);
                     if(lex->token == TOKEN_EQ) {
                         // Assignment
-                        Var *var = scope_find(&com->scope, name);
+                        Var *var = find_var(com, name);
                         if(var == NULL) {
                             compiler_diagf(lex->loc, "Could not find %s in scope", name);
                             return false;
@@ -251,7 +213,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     Inst inst = (Inst) {
                         .loc = stmt_loc,
                         .kind = INST_EXTERN,
-                        .args[0] = MAKE_NAME_ARG(arena_strdup(fn->arena, lex->string)),
+                        .args[0] = MAKE_NAME_ARG(arena_strdup(&com->arena, lex->string)),
                     };
                     push_inst(fn, inst);
                     lexer_get_and_expect_token(lex, TOKEN_SEMICOLON);
@@ -269,40 +231,58 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
 
 bool compile_function(Compiler *com, Function *fn, Lexer *lex, Nob_String_Builder *output)
 {
-    Loc top_loc = lex->loc;
-    com->scope.count = 0;
+    fn->loc = lex->loc;
+    com->vars.count = 0;
     if(!lexer_expect_token(lex, TOKEN_FUNCTION)) return false;
     if(!lexer_get_and_expect_token(lex, TOKEN_ID)) return false;
-    fn->name  = arena_strdup(fn->arena, lex->string);
+    fn->name  = arena_strdup(&com->arena, lex->string);
 
     if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
     if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
-    if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
-    if(!compile_block(com, fn, lex)) return false;
-    if(!lexer_expect_token(lex, TOKEN_CCURLY)) return false;
 
-    if(!generate_function(com->target, output, fn)) {
-        compiler_diagf(top_loc, "Failed to compile function %s", fn->name);
-        return false;
+    if(!lexer_get_token(lex)) return false;
+    if(lex->token == TOKEN_COLON) {
+        if(!lexer_get_and_expect_token(lex, TOKEN_ID)) return false;
+        while(lex->token == TOKEN_ID) {
+            if(find_var(com, lex->string) != NULL) {
+                compiler_diagf(lex->loc, "Variable with name `%s` is already exists", lex->string);
+                return false;
+            }
+            alloc_var_local(com, arena_strdup(&com->arena, lex->string), alloc_local(fn));
+            lexer_get_token(lex);
+            if(lex->token == TOKEN_COMMA) lexer_get_token(lex);
+        }
     }
 
+    if(!lexer_expect_token(lex, TOKEN_OCURLY)) return false;
+    if(!compile_block(com, fn, lex)) return false;
+    if(!lexer_expect_token(lex, TOKEN_CCURLY)) return false;
     return true;
 }
 
 bool compile_program(Compiler *com, Nob_String_Builder *output, Lexer *lex)
 {
-    generate_program_prolog(com->target, output);
+    bool ok = true;
     while(lexer_get_token(lex) && lex->token != TOKEN_EOF) {
         Function fn = {0};
-        fn.arena = &com->arena;
-        bool ok = compile_function(com, &fn, lex, output);
-        destroy_function_blocks(&fn);
-        if(!ok) return false;
+        ok = compile_function(com, &fn, lex, output);
+        if(!ok) break;
+        nob_da_append(&com->funcs, fn);
     }
     if(!lexer_get_and_expect_token(lex, TOKEN_EOF)) return false;
-    generate_program_epilog(com->target, output);
-    generate_static_data(com->target, output, com->static_data);
-    return true;
+
+    if(ok) {
+        ok = ok && lexer_get_and_expect_token(lex, TOKEN_EOF);
+        ok = ok && generate_program(com, output);
+    }
+
+    for(size_t i = 0; i < com->funcs.count; ++i) {
+        Function fn = com->funcs.items[i];
+        nob_da_free(fn);
+    }
+    nob_da_free(com->funcs);
+    arena_free(&com->arena);
+    return ok;
 }
 
 
@@ -375,7 +355,8 @@ int main(int argc, char **argv)
     }
     if(!nob_write_entire_file(output_filepath, output.items, output.count)) return false;
     nob_da_free(output);
-    nob_da_free(com.scope);
+    nob_da_free(com.vars);
 
     return 0;
 }
+

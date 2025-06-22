@@ -58,7 +58,6 @@
     X(GREATER      , ">"  ) \
 
 #define KEYWORD_TOKEN_LIST         \
-    X(VAR          , "var"       ) \
     X(EXTERN       , "extern"    ) \
     X(CASE         , "case"      ) \
     X(IF           , "if"        ) \
