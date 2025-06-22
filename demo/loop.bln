@@ -1,0 +1,42 @@
+function main() 
+    : a, b, c
+{
+    extern printf;
+    a = 0;
+    b = 1;
+    printf("This is fibonacci:\n");
+    while(a < 30) {
+        printf("%d\n", a);
+        c = a + b;
+        a = b;
+        b = c;
+    }
+
+    printf("This is 0..10:\n");
+    a = 0;
+    while(a < 10) {
+        printf("%d\n", a);
+        a = a + 1;
+    }
+
+    printf("This is 9..0:\n");
+    a = 9;
+    while(a >= 0) {
+        printf("%d\n", a);
+        a = a - 1;
+    }
+
+    printf("This is 0..=10:\n");
+    a = 0;
+    while(a <= 10) {
+        printf("%d\n", a);
+        a = a + 1;
+    }
+
+    printf("This is 10..=1:\n");
+    a = 10;
+    while(a > 0) {
+        printf("%d\n", a);
+        a = a - 1;
+    }
+}

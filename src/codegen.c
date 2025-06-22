@@ -33,6 +33,14 @@ bool generate_program(Compiler *com, Nob_String_Builder *output)
     return true;
 }
 
+void optimize_function(Compiler *com, Function *fn)
+{
+}
+
+void optimize_program(Compiler *com)
+{
+}
+
 Inst *push_inst(Function *fn, Inst inst)
 {
     nob_da_append(fn, inst);
@@ -73,6 +81,11 @@ const char *display_inst_kind(InstKind kind)
         case INST_ADD: return "ADD";
         case INST_SUB: return "SUB";
         case INST_LT: return "LT";
+        case INST_LE: return "LE";
+        case INST_GT: return "GT";
+        case INST_GE: return "GE";
+        case INST_EQ: return "EQ";
+        case INST_NE: return "NE";
         case INST_BRANCH: return "BRANCH";
         case INST_LABEL: return "LABEL";
         default: assert(0 && "Unreachable: invalid instruction kind at display_inst_kind");
@@ -109,19 +122,19 @@ void dump_arg(Arg arg, const char *end)
             printf("NONE%s", end);
             break;
         case ARG_LABEL:
-            printf("LABEL(%zu)%s", arg.local_index, end);
+            printf(".L%zu%s", arg.local_index, end);
             break;
         case ARG_LOCAL_INDEX:
-            printf("LOCAL(%zu)%s", arg.local_index, end);
+            printf("#%zu%s", arg.local_index, end);
             break;
         case ARG_STATIC_DATA:
-            printf("STATIC(%zu)%s", arg.static_offset, end);
+            printf("static[%zu]%s", arg.static_offset, end);
             break;
         case ARG_NAME:
-            printf("NAME(%s)%s", arg.name, end);
+            printf("\"%s\"%s", arg.name, end);
             break;
         case ARG_INT_VALUE:
-            printf("INT(%lld)%s", arg.int_value, end);
+            printf("$%lld%s", arg.int_value, end);
             break;
         case ARG_LIST:
             printf("(");
@@ -137,70 +150,109 @@ void dump_arg(Arg arg, const char *end)
 void dump_function(Function *fn)
 {
     printf("%s() [locals=%zu]\n", fn->name, fn->locals_count);
-    size_t block_counter = 0;
     for(size_t i = 0; i < fn->count; ++i) {
         Inst inst = fn->items[i];
         switch(inst.kind) {
             case INST_LABEL:
-                printf("LABEL(%zu):\n", inst.args[0].label);
+                printf(".L%zu:\n", inst.args[0].label);
                 break;
             case INST_LOCAL_INIT:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                printf("    LOCAL_INIT LOCAL(%zu)\n", inst.args[0].local_index);
+                printf("    local_init   #%zu\n", inst.args[0].local_index);
                 break;
             case INST_LOCAL_ASSIGN:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                printf("    LOCAL_ASSIGN ");
-                dump_arg(inst.args[0], ", ");
+                printf("    ");
+                dump_arg(inst.args[0], " = ");
                 dump_arg(inst.args[1], "\n");
                 break;
             case INST_EXTERN:
                 if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
-                printf("    EXTERN ");
+                printf("    _ = extern ");
                 dump_arg(inst.args[0], "\n");
                 break;
             case INST_FUNCALL:
                 {
                     if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
                     if(!expect_inst_arg(inst, 1, ARG_LIST)) return;
-                    printf("    FUNCALL ");
+                    printf("    funcall ");
                     dump_arg(inst.args[0], ", ");
                     dump_arg(inst.args[1], "\n");
                 }
                 break;
-            case INST_LT:
+            case INST_ADD:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                printf("    LT LOCAL(%zu), ", inst.args[0].local_index);
-                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
-                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                printf("    #%zu = add ", inst.args[0].local_index);
                 dump_arg(inst.args[1], ", ");
                 dump_arg(inst.args[2], "\n");
                 break;
             case INST_SUB:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                printf("    SUB LOCAL(%zu), ", inst.args[0].local_index);
+                printf("    #%zu = sub ", inst.args[0].local_index);
                 // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
                 // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
                 dump_arg(inst.args[1], ", ");
                 dump_arg(inst.args[2], "\n");
                 break;
-            case INST_ADD:
+            case INST_LT:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
-                printf("    ADD LOCAL(%zu), ", inst.args[0].local_index);
+                printf("    #%zu = lt ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_LE:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    #%zu = le ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_GT:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    #%zu = gt ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_GE:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    #%zu = ge ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_EQ:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    #%zu = eq ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_NE:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    #%zu = ne ", inst.args[0].local_index);
+                // TODO: expect args 1 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
+                // TODO: expect args 2 to either ARG_LOCAL_INDEX, ARG_INT_VALUE or ARG_STATIC_DATA
                 dump_arg(inst.args[1], ", ");
                 dump_arg(inst.args[2], "\n");
                 break;
             case INST_BRANCH:
                 if(!expect_inst_arg(inst, 0, ARG_LABEL)) return;
                 if(!expect_inst_arg(inst, 1, ARG_LABEL)) return;
-                printf("    BRANCH ");
+                printf("    _ = branch ");
                 dump_arg(inst.args[0], ", ");
                 dump_arg(inst.args[1], ", ");
                 dump_arg(inst.args[2], "\n");
                 break;
             case INST_JMP:
                 if(!expect_inst_arg(inst, 0, ARG_LABEL)) return;
-                printf("    JMP(BLOCK(%zu))\n", inst.args[0].label);
+                printf("    _ = jmp .L%zu\n", inst.args[0].label);
                 break;
             default:
                 assert(0 && "Invalid instruction kind");

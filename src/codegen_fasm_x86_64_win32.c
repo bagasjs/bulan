@@ -28,16 +28,18 @@ void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_Stri
     }
 }
 
-static bool load_arg_to_reg(Nob_String_Builder *output, const char *reg, Arg arg, Loc loc)
+static bool load_arg(Nob_String_Builder *output, Inst inst, int arg_index, const char *dst)
 {
+    assert(arg_index >= 0 && arg_index < 3);
+    Arg arg = inst.args[arg_index];
     switch(arg.kind) {
         case ARG_LOCAL_INDEX:
             {
-                nob_sb_appendf(output, "    mov %s, QWORD [rbp - %zu]\n", reg, (arg.local_index + 1) * 8);
+                nob_sb_appendf(output, "    mov %s, QWORD [rbp - %zu]\n", dst, (arg.local_index + 1) * 8);
             } break;
         case ARG_INT_VALUE:
             {
-                nob_sb_appendf(output, "    mov %s, %lld\n", reg, arg.int_value);
+                nob_sb_appendf(output, "    mov %s, %lld\n", dst, arg.int_value);
             } break;
         case ARG_STATIC_DATA:
             {
@@ -45,23 +47,13 @@ static bool load_arg_to_reg(Nob_String_Builder *output, const char *reg, Arg arg
                 if(arg.static_offset > 0) 
                     nob_sb_appendf(output, "    add rax, %zu\n", arg.static_offset);
             } break;
-        case ARG_LIST:
+        default:
             {
-                compiler_missingf(loc, "CODEGEN ERROR: Could not load 'list' argument into register\n");
-                return false;
-            } break;
-        case ARG_LABEL:
-            {
-                compiler_missingf(loc, "CODEGEN ERROR: Could not load 'label' argument into register\n");
-                return false;
-            } break;
-        case ARG_NAME:
-            {
-                compiler_missingf(loc, "CODEGEN ERROR: Could not load 'name' argument into register\n");
-            } break;
-        case ARG_NONE:
-            {
-                compiler_missingf(loc, "CODEGEN ERROR: Could not load 'none' argument into register\n");
+                compiler_diagf(inst.loc, "CODEGEN ERROR: Could not load argument %d for instruction %s with type %s into %s\n",
+                        arg_index,
+                        display_inst_kind(inst.kind),
+                        display_arg_kind(arg.kind),
+                        dst);
                 return false;
             } break;
     }
@@ -94,102 +86,80 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                 break;
             case INST_LT:
                 {
-                    switch(inst.args[1].kind) {
-                        case ARG_LOCAL_INDEX:
-                            nob_sb_appendf(output, "    mov rax, QWORD [rbp - %zu]\n", (inst.args[1].local_index + 1) * 8);
-                            break;
-                        case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    mov rax, %lld\n", inst.args[1].int_value);
-                            break;
-                        default:
-                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
-                                    display_inst_kind(inst.kind),
-                                    display_arg_kind(inst.args[1].kind));
-                            break;
-                    }
-                    switch(inst.args[2].kind) {
-                        case ARG_LOCAL_INDEX:
-                            nob_sb_appendf(output, "    cmp rax, QWORD [rbp - %zu]\n", (inst.args[2].local_index + 1) * 8);
-                            break;
-                        case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    cmp rax, %lld\n", inst.args[2].int_value);
-                            break;
-                        default:
-                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 for instruction %s with type %s", 
-                                    display_inst_kind(inst.kind),
-                                    display_arg_kind(inst.args[2].kind));
-                            break;
-                    }
+                    if(!load_arg(output, inst, 1, "rax")) return false;
+                    if(!load_arg(output, inst, 2, "rdx")) return false;
+                    nob_sb_appendf(output, "    cmp   rax, rdx\n");
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
                     nob_sb_appendf(output, "    mov   rax, 0\n");
                     nob_sb_appendf(output, "    setl  al\n");
                     nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
-                }
-                break;
+                } break;
+            case INST_LE:
+                {
+                    if(!load_arg(output, inst, 1, "rax")) return false;
+                    if(!load_arg(output, inst, 2, "rdx")) return false;
+                    nob_sb_appendf(output, "    cmp   rax, rdx\n");
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    nob_sb_appendf(output, "    mov   rax, 0\n");
+                    nob_sb_appendf(output, "    setle al\n");
+                    nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
+            case INST_GT:
+                {
+                    if(!load_arg(output, inst, 1, "rax")) return false;
+                    if(!load_arg(output, inst, 2, "rdx")) return false;
+                    nob_sb_appendf(output, "    cmp   rax, rdx\n");
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    nob_sb_appendf(output, "    mov   rax, 0\n");
+                    nob_sb_appendf(output, "    setg  al\n");
+                    nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
+            case INST_GE:
+                {
+                    if(!load_arg(output, inst, 1, "rax")) return false;
+                    if(!load_arg(output, inst, 2, "rdx")) return false;
+                    nob_sb_appendf(output, "    cmp   rax, rdx\n");
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    nob_sb_appendf(output, "    mov   rax, 0\n");
+                    nob_sb_appendf(output, "    setge al\n");
+                    nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
+            case INST_EQ:
+                {
+                    if(!load_arg(output, inst, 1, "rax")) return false;
+                    if(!load_arg(output, inst, 2, "rdx")) return false;
+                    nob_sb_appendf(output, "    cmp   rax, rdx\n");
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    nob_sb_appendf(output, "    mov   rax, 0\n");
+                    nob_sb_appendf(output, "    sete  al\n");
+                    nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
+            case INST_NE:
+                {
+                    if(!load_arg(output, inst, 1, "rax")) return false;
+                    if(!load_arg(output, inst, 2, "rdx")) return false;
+                    nob_sb_appendf(output, "    cmp   rax, rdx\n");
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    nob_sb_appendf(output, "    mov   rax, 0\n");
+                    nob_sb_appendf(output, "    setne al\n");
+                    nob_sb_appendf(output, "    mov   QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
             case INST_ADD:
                 {
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
-                    switch(inst.args[1].kind) {
-                        case ARG_LOCAL_INDEX:
-                            nob_sb_appendf(output, "    mov rax, QWORD [rbp - %zu]\n", (inst.args[1].local_index + 1) * 8);
-                            break;
-                        case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    mov rax, %lld\n", inst.args[1].int_value);
-                            break;
-                        default:
-                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
-                                    display_inst_kind(inst.kind),
-                                    display_arg_kind(inst.args[1].kind));
-                            break;
-                    }
-                    switch(inst.args[2].kind) {
-                        case ARG_LOCAL_INDEX:
-                            nob_sb_appendf(output, "    add rax, QWORD [rbp - %zu]\n", (inst.args[2].local_index + 1) * 8);
-                            break;
-                        case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    add rax, %lld\n", inst.args[2].int_value);
-                            break;
-                        default:
-                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 for instruction %s with type %s", 
-                                    display_inst_kind(inst.kind),
-                                    display_arg_kind(inst.args[2].kind));
-                            break;
-                    }
+                    load_arg(output, inst, 1, "rax");
+                    load_arg(output, inst, 2, "rdx");
+                    nob_sb_appendf(output, "    add rax, rdx\n");
                     nob_sb_appendf(output, "    mov QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
-                }
-                break;
+                } break;
             case INST_SUB:
                 {
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
-                    switch(inst.args[1].kind) {
-                        case ARG_LOCAL_INDEX:
-                            nob_sb_appendf(output, "    mov rax, QWORD [rbp - %zu]\n", (inst.args[1].local_index + 1) * 8);
-                            break;
-                        case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    mov rax, %lld\n", inst.args[1].int_value);
-                            break;
-                        default:
-                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
-                                    display_inst_kind(inst.kind),
-                                    display_arg_kind(inst.args[1].kind));
-                            break;
-                    }
-                    switch(inst.args[2].kind) {
-                        case ARG_LOCAL_INDEX:
-                            nob_sb_appendf(output, "    sub rax, QWORD [rbp - %zu]\n", (inst.args[2].local_index + 1) * 8);
-                            break;
-                        case ARG_INT_VALUE:
-                            nob_sb_appendf(output, "    sub rax, %lld\n", inst.args[2].int_value);
-                            break;
-                        default:
-                            compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 for instruction %s with type %s", 
-                                    display_inst_kind(inst.kind),
-                                    display_arg_kind(inst.args[2].kind));
-                            break;
-                    }
+                    load_arg(output, inst, 1, "rax");
+                    load_arg(output, inst, 2, "rdx");
+                    nob_sb_appendf(output, "    sub rax, rdx\n");
                     nob_sb_appendf(output, "    mov QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
-                }
-                break;
+                } break;
             case INST_LOCAL_ASSIGN:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
                 switch(inst.args[1].kind) {

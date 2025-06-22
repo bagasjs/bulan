@@ -71,6 +71,11 @@ InstKind token_to_binop_inst_kind(Token token)
         case TOKEN_PLUS:  return INST_ADD;
         case TOKEN_MINUS: return INST_SUB;
         case TOKEN_LESS:  return INST_LT;
+        case TOKEN_LESSEQ:  return INST_LE;
+        case TOKEN_GREATER:  return INST_GT;
+        case TOKEN_GREATEREQ:  return INST_GE;
+        case TOKEN_EQ:  return INST_EQ;
+        case TOKEN_NOTEQ:  return INST_NE;
         default: return INST_NOP;
     }
 }
@@ -280,6 +285,7 @@ bool compile_program(Compiler *com, Nob_String_Builder *output, Lexer *lex)
         Function fn = com->funcs.items[i];
         nob_da_free(fn);
     }
+
     nob_da_free(com->funcs);
     arena_free(&com->arena);
     return ok;

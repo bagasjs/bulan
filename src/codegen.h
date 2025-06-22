@@ -64,14 +64,15 @@ typedef enum {
     // funcall arg[0].local, arg[1].name, arg[2].list
     INST_FUNCALL,
 
-    // add arg[0].local, arg[1], arg[2]
+    // binop arg[0].local, arg[1], arg[2]
     INST_ADD,
-
-    // sub arg[0].local, arg[1], arg[2]
     INST_SUB,
-
-    // lt  arg[0].local, arg[1], arg[2]
     INST_LT,
+    INST_LE,
+    INST_GT,
+    INST_GE,
+    INST_EQ,
+    INST_NE,
 
     // label arg[0].label_index
     INST_LABEL,
@@ -150,6 +151,7 @@ const char *display_target(Target target);
 
 void emit_target_output(Target target, Nob_String_Builder output);
 
+void optimize_program(Compiler *com);
 bool generate_x86_64_program(Compiler *com, Nob_String_Builder *output);
 bool generate_program(Compiler *com, Nob_String_Builder *output);
 
