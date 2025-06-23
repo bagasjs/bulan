@@ -74,7 +74,7 @@ InstKind token_to_binop_inst_kind(Token token)
         case TOKEN_LESSEQ:  return INST_LE;
         case TOKEN_GREATER:  return INST_GT;
         case TOKEN_GREATEREQ:  return INST_GE;
-        case TOKEN_EQ:  return INST_EQ;
+        case TOKEN_EQEQ:  return INST_EQ;
         case TOKEN_NOTEQ:  return INST_NE;
         default: return INST_NOP;
     }
@@ -117,6 +117,95 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
     while(lexer_get_token(lex) && lex->token != TOKEN_CCURLY) {
         Loc stmt_loc = lex->loc;
         switch(lex->token) {
+            case TOKEN_IF:
+                {
+                    Arg arg = {0};
+                    if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
+                    if(!compile_expression(&arg, fn, lex, com)) return false;
+                    if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
+                    size_t then_label  = alloc_label(fn);
+                    size_t next_label = alloc_label(fn);
+                    Inst *inst = push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_BRANCH,
+                        .args[0] = MAKE_LABEL_ARG(then_label),
+                        .args[1] = MAKE_LABEL_ARG(next_label),
+                        .args[2] = arg,
+                    });
+                    if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
+                    push_inst(fn, (Inst) {
+                        .loc  = stmt_loc,
+                        .kind = INST_LABEL,
+                        .args[0] = MAKE_LABEL_ARG(then_label),
+                    });
+                    if(!compile_block(com, fn, lex)) return false;
+                    ParsePoint saved_point = lex->parse_point;
+                    if(!lexer_get_token(lex)) return false;
+                    if(lex->token == TOKEN_ELSE) {
+                        size_t end_label = alloc_label(fn);
+                        push_inst(fn, (Inst) {
+                            .loc  = stmt_loc,
+                            .kind = INST_JMP,
+                            .args[0] = MAKE_LABEL_ARG(end_label),
+                        });
+                        while(lex->token == TOKEN_ELSE) {
+                            push_inst(fn, (Inst) {
+                                .loc  = stmt_loc,
+                                .kind = INST_LABEL,
+                                .args[0] = MAKE_LABEL_ARG(next_label),
+                            });
+                            if(!lexer_get_token(lex)) return false;
+                            bool should_break = true;
+                            if(lex->token == TOKEN_IF) {
+                                then_label = alloc_label(fn);
+                                next_label = alloc_label(fn);
+                                should_break = false;
+                                if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
+                                if(!compile_expression(&arg, fn, lex, com)) return false;
+                                if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
+                                Inst *inst = push_inst(fn, (Inst) {
+                                    .loc  = stmt_loc,
+                                    .kind = INST_BRANCH,
+                                    .args[0] = MAKE_LABEL_ARG(then_label),
+                                    .args[1] = MAKE_LABEL_ARG(next_label),
+                                    .args[2] = arg,
+                                });
+                                if(!lexer_get_token(lex)) return false;
+                                push_inst(fn, (Inst) {
+                                    .loc  = stmt_loc,
+                                    .kind = INST_LABEL,
+                                    .args[0] = MAKE_LABEL_ARG(then_label),
+                                });
+                            }
+                            if(!lexer_expect_token(lex, TOKEN_OCURLY)) return false;
+                            if(!compile_block(com, fn, lex)) return false;
+                            push_inst(fn, (Inst) {
+                                .loc  = stmt_loc,
+                                .kind = INST_JMP,
+                                .args[0] = MAKE_LABEL_ARG(end_label),
+                            });
+                            if(should_break) break;
+                            if(!lexer_get_token(lex)) return false;
+                        }
+                        push_inst(fn, (Inst) {
+                            .loc  = stmt_loc,
+                            .kind = INST_LABEL,
+                            .args[0] = MAKE_LABEL_ARG(end_label),
+                        });
+                    } else {
+                        lex->parse_point = saved_point;
+                        push_inst(fn, (Inst) {
+                            .loc  = stmt_loc,
+                            .kind = INST_JMP,
+                            .args[0] = MAKE_LABEL_ARG(next_label),
+                        });
+                        push_inst(fn, (Inst) {
+                            .loc  = stmt_loc,
+                            .kind = INST_LABEL,
+                            .args[0] = MAKE_LABEL_ARG(next_label),
+                        });
+                    }
+                } break;
             case TOKEN_WHILE:
                 {
                     size_t start_label = fn->labels_count;

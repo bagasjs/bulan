@@ -95,6 +95,7 @@ typedef struct {
 } Function;
 
 size_t alloc_local(Function *fn);
+size_t alloc_label(Function *fn);
 Inst *push_inst(Function *fn, Inst inst);
 
 bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind);

@@ -1,0 +1,18 @@
+function main()
+    : a
+{
+    extern printf;
+    a = 3;
+
+    if(a == 0) {
+        printf("a is 0\n");
+    } else if(a == 1) {
+        printf("a is 1\n");
+    } else if(a == 2) {
+        printf("a is 2\n");
+    } else if(a == 3) {
+        printf("a is 3\n");
+    } else {
+        printf("a is unknown\n");
+    }
+}

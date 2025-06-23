@@ -54,6 +54,13 @@ size_t alloc_local(Function *fn)
     return local;
 }
 
+size_t alloc_label(Function *fn)
+{
+    size_t label = fn->labels_count;
+    fn->labels_count += 1;
+    return label;
+}
+
 const char *display_arg_kind(ArgKind kind)
 {
     switch(kind) {
