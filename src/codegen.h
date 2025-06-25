@@ -122,6 +122,17 @@ typedef enum {
     VAR_EXTERN,
 } VarStorage;
 
+// TODO: separate backend data into separate struct from 
+//       struct Compiler. It would be cool if I can reuse
+//       the backend for many programming language
+/*typedef struct {*/
+/*    Target target;*/
+/*    uint8_t *static_data;*/
+/*    size_t count_static_data;*/
+/*    Function *funcs;*/
+/*    size_t count_funcs;*/
+/*} Program;*/
+
 typedef struct {
     const char *name;
     size_t index;
@@ -131,7 +142,6 @@ typedef struct {
 typedef struct Compiler {
     Arena arena;
     Target target;
-    Function func;
     Nob_String_Builder static_data;
 
     struct {

@@ -9,8 +9,9 @@
  * Copyright 2025 bagasjs
  * See LICENSE for the full license text.
  */
-#include "nob.h"
 #include "lexer.h"
+#include <stdlib.h>
+#include <assert.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -168,6 +169,24 @@ Loc lexer_loc(Lexer *lex)
     };
 }
 
+void lexer_storage_append(Lexer *lex, char ch)
+{
+    if(lex->string_storage.count + 1 > lex->string_storage.capacity) {
+        if(lex->string_storage.capacity == 0) {
+            lex->string_storage.capacity  = 32;
+        } else {
+            lex->string_storage.capacity *= 2;
+        }
+
+        void *new_items = malloc(lex->string_storage.capacity * sizeof(*lex->string_storage.items));
+        assert(new_items != NULL && "Buy more RAM LOL!");
+        memcpy(new_items, lex->string_storage.items, lex->string_storage.count * sizeof(*lex->string_storage.items));
+        free(lex->string_storage.items);
+        lex->string_storage.items = new_items;
+    }
+    lex->string_storage.items[lex->string_storage.count++] = ch;
+}
+
 bool lexer_parse_string_into_storage(Lexer *lex, char delim)
 {
     char ch = 0;
@@ -205,12 +224,12 @@ bool lexer_parse_string_into_storage(Lexer *lex, char delim)
                     break;
             }
 
-            nob_da_append(&lex->string_storage, nch);
+            lexer_storage_append(lex, nch);
             lexer_skip_char(lex);
         } else if(ch == delim) {
             break;
         } else {
-            nob_da_append(&lex->string_storage, ch);
+            lexer_storage_append(lex, ch);
             lexer_skip_char(lex);
         }
     }
@@ -242,7 +261,7 @@ bool lexer_get_token(Lexer *lex)
         return false;
     }
 
-    for(int i = 0; i < (int)NOB_ARRAY_LEN(PUNCTS); ++i) {
+    for(int i = 0; i < (int)ARRAY_LEN(PUNCTS); ++i) {
         TokenToLit t = PUNCTS[i];
         if(lexer_skip_prefix(lex, t.literal)) {
             lex->token = t.token;
@@ -255,16 +274,16 @@ bool lexer_get_token(Lexer *lex)
         lex->string_storage.count = 0;
         while((ch = lexer_peek_char(lex)) != 0) {
             if(lexer_is_identifier(ch)) {
-                nob_da_append(&lex->string_storage, ch);
+                lexer_storage_append(lex, ch);
                 lexer_skip_char(lex);
             } else {
                 break;
             }
         }
 
-        nob_da_append(&lex->string_storage, 0);
+        lexer_storage_append(lex, 0);
         lex->string = lex->string_storage.items;
-        for(int i = 0; i < (int)NOB_ARRAY_LEN(KEYWORDS); ++i) {
+        for(int i = 0; i < (int)ARRAY_LEN(KEYWORDS); ++i) {
             TokenToLit t = KEYWORDS[i];
             if(strcmp(lex->string, t.literal) == 0) {
                 lex->token = t.token;
@@ -327,7 +346,7 @@ bool lexer_get_token(Lexer *lex)
             return false;
         }
         lexer_skip_char(lex);
-        nob_da_append(&lex->string_storage, 0);
+        lexer_storage_append(lex, 0);
         lex->string = lex->string_storage.items;
         return true;
     }

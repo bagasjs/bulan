@@ -17,6 +17,20 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#ifndef ARRAY_LEN
+#define ARRAY_LEN(xs) (sizeof(xs)/sizeof(*(xs)))
+#endif
+
+typedef struct {
+    char *input_path;
+    int line_offset;
+    int line_number;
+} Loc;
+
+#define compiler_missingf(loc, ...) _compiler_missingf(__FILE__, __LINE__, loc, __VA_ARGS__)
+void _compiler_missingf(const char *file, int line, Loc loc, const char *fmt, ...);
+void compiler_diagf(Loc loc, const char *fmt, ...);
+
 #define PUNCT_TOKEN_LIST    \
     X(QUESTION     , "?"  ) \
     X(OCURLY       , "{"  ) \
@@ -89,12 +103,6 @@ typedef enum {
 } Token;
 
 typedef struct {
-    char *input_path;
-    int line_offset;
-    int line_number;
-} Loc;
-
-typedef struct {
     char *current;
     char *line_start;
     size_t line_number;
@@ -116,10 +124,6 @@ typedef struct {
     double real_number;
     Loc loc;
 } Lexer;
-
-#define compiler_missingf(loc, ...) _compiler_missingf(__FILE__, __LINE__, loc, __VA_ARGS__)
-void _compiler_missingf(const char *file, int line, Loc loc, const char *fmt, ...);
-void compiler_diagf(Loc loc, const char *fmt, ...);
 
 Lexer lexer_new(char *input_path, char *input_stream, char *eof);
 bool lexer_get_token(Lexer *lex);
