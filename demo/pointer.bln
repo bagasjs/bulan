@@ -1,0 +1,11 @@
+fn main() 
+    : ptr 
+{
+    extern malloc, printf;
+    // 8 is a single word
+    ptr = malloc(8 * 2);
+    *(ptr + (0 * 8)) = 1;
+    *(ptr + (1 * 8)) = 2;
+    printf("ptr[0] = %d\n", *(ptr + (0 * 8)));
+    printf("ptr[1] = %d\n", *(ptr + (1 * 8)));
+}
