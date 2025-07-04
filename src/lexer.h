@@ -31,6 +31,10 @@ typedef struct {
 void _compiler_missingf(const char *file, int line, Loc loc, const char *fmt, ...);
 void compiler_diagf(Loc loc, const char *fmt, ...);
 
+// TODO: instead of registering tokens like this maybe 
+//       having the user to register the tokens would be 
+//       then I can use the lexer for multiple programming
+//       language. We can use Trie data structure for this
 #define PUNCT_TOKEN_LIST    \
     X(QUESTION     , "?"  ) \
     X(OCURLY       , "{"  ) \
@@ -109,6 +113,12 @@ typedef struct {
 } ParsePoint;
 
 typedef struct {
+    int token;
+    const char *literal;
+    bool is_keyword;
+} TokenInfo;
+
+typedef struct {
     char *input_path;
     char *input_stream;
     char *eof;
@@ -123,14 +133,23 @@ typedef struct {
     int64_t int_number;
     double real_number;
     Loc loc;
+
+    TokenInfo tokens[128];
+    size_t count_tokens;
 } Lexer;
 
 Lexer lexer_new(char *input_path, char *input_stream, char *eof);
+void lexer_destroy(Lexer *lex);
 bool lexer_get_token(Lexer *lex);
 bool lexer_expect_token(Lexer *lex, Token token);
 Token lexer_expect_token2(Lexer *lex, Token token_1, Token token_2);
 bool lexer_get_and_expect_token(Lexer *lex, Token token);
 const char *lexer_display_token(Token token);
 Loc lexer_loc(Lexer *lex);
+
+// TODO: let user register their own tokens
+void lexer_register_punct(Lexer *lex, const char *punct, int token);
+void lexer_register_keyword(Lexer *lex, const char *keyword, int token);
+// void lexer_register_default_tokens(Lexer *lex); // C tokens
 
 #endif // LEXER_H_

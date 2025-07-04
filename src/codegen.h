@@ -117,21 +117,21 @@ typedef enum {
     _COUNT_TARGETS,
 } Target;
 
+// TODO: separate backend data into separate struct from 
+//       struct Compiler. It would be cool if I can reuse
+//       the backend for many programming language
+typedef struct {
+    Target target;
+    uint8_t *static_data;
+    size_t count_static_data;
+    Function *funcs;
+    size_t count_funcs;
+} Program;
+
 typedef enum {
     VAR_LOCAL  = 0,
     VAR_EXTERN,
 } VarStorage;
-
-// TODO: separate backend data into separate struct from 
-//       struct Compiler. It would be cool if I can reuse
-//       the backend for many programming language
-/*typedef struct {*/
-/*    Target target;*/
-/*    uint8_t *static_data;*/
-/*    size_t count_static_data;*/
-/*    Function *funcs;*/
-/*    size_t count_funcs;*/
-/*} Program;*/
 
 typedef struct {
     const char *name;
@@ -156,7 +156,6 @@ typedef struct Compiler {
         size_t capacity;
     } vars;
 } Compiler;
-
 
 const char *display_target(Target target);
 
