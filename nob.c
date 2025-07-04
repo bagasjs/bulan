@@ -32,7 +32,7 @@ int main(int argc, char **argv)
     nob_cmd_append(&cmd, "-I", "thirdparty");
     nob_cmd_append(&cmd, "-I", "src");
     nob_cmd_append(&cmd, "-o", BUILD_DIR"/blnc.exe");
-    nob_cmd_append(&cmd, "./src/main.c");
+    nob_cmd_append(&cmd, "./src/bulan.c");
     nob_cmd_append(&cmd, "./src/lexer.c");
     nob_cmd_append(&cmd, "./src/codegen.c");
     nob_cmd_append(&cmd, "./src/codegen_fasm_x86_64_win32.c");
