@@ -122,47 +122,18 @@ typedef enum {
 //       the backend for many programming language
 typedef struct {
     Target target;
-    uint8_t *static_data;
+    char *static_data;
     size_t count_static_data;
     Function *funcs;
     size_t count_funcs;
 } Program;
 
-typedef enum {
-    VAR_LOCAL  = 0,
-    VAR_EXTERN,
-} VarStorage;
-
-typedef struct {
-    const char *name;
-    size_t index;
-    VarStorage storage;
-} Var;
-
-typedef struct Compiler {
-    Arena arena;
-    Target target;
-    Nob_String_Builder static_data;
-
-    struct {
-        Function *items;
-        size_t count;
-        size_t capacity;
-    } funcs;
-
-    struct {
-        Var *items;
-        size_t count;
-        size_t capacity;
-    } vars;
-} Compiler;
-
 const char *display_target(Target target);
 
 void emit_target_output(Target target, Nob_String_Builder output);
 
-void optimize_program(Compiler *com);
-bool generate_x86_64_program(Compiler *com, Nob_String_Builder *output);
-bool generate_program(Compiler *com, Nob_String_Builder *output);
+void optimize_program(Program *prog);
+bool generate_x86_64_program(Program *prog, Nob_String_Builder *output);
+bool generate_program(Program *prog, Nob_String_Builder *output);
 
 #endif // CODEGEN_H_

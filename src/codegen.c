@@ -16,28 +16,28 @@ const char *display_target(Target target)
     return NULL;
 }
 
-bool generate_program(Compiler *com, Nob_String_Builder *output)
+bool generate_program(Program *prog, Nob_String_Builder *output)
 {
-    switch(com->target) {
+    switch(prog->target) {
         case TARGET_IR: 
             {
-                for(size_t i = 0; i < com->funcs.count; ++i) {
-                    dump_function(&com->funcs.items[i]);
+                for(size_t i = 0; i < prog->count_funcs; ++i) {
+                    dump_function(&prog->funcs[i]);
                 }
             } break;
         case TARGET_FASM_X86_64_WIN32:
-            return generate_x86_64_program(com, output);
+            return generate_x86_64_program(prog, output);
         default:
             assert(0 && "Invalid target in generate_program");
     }
     return true;
 }
 
-void optimize_function(Compiler *com, Function *fn)
+void optimize_function(Program *prog, Function *fn)
 {
 }
 
-void optimize_program(Compiler *com)
+void optimize_program(Program *prog)
 {
 }
 

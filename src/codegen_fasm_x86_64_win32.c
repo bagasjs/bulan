@@ -13,16 +13,16 @@ void generate_fasm_x86_64_win32_program_epilog(Nob_String_Builder *output)
     assert(output);
 }
 
-void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, Nob_String_Builder static_data)
+void generate_fasm_x86_64_win32_static_data(Nob_String_Builder *output, const char *static_data, size_t static_data_length)
 {
     nob_sb_appendf(output, "section \".data\"\n");
-    if(static_data.count > 0) {
+    if(static_data_length > 0) {
         nob_sb_appendf(output, "static_data: db ");
-        for(size_t i = 0; i < static_data.count; ++i) {
+        for(size_t i = 0; i < static_data_length; ++i) {
             if(i > 0) {
                 nob_sb_appendf(output, ", ");
             }
-            nob_sb_appendf(output, "0x%02X", static_data.items[i]);
+            nob_sb_appendf(output, "0x%02X", static_data[i]);
         }
         nob_sb_appendf(output, "\n");
     }
@@ -275,17 +275,17 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
     return true;
 }
 
-bool generate_x86_64_program(Compiler *com, Nob_String_Builder *output)
+bool generate_x86_64_program(Program *prog, Nob_String_Builder *output)
 {
     generate_fasm_x86_64_win32_program_prolog(output);
-    for(size_t i = 0; i < com->funcs.count; ++i) {
-        Function *fn = &com->funcs.items[i];
+    for(size_t i = 0; i < prog->count_funcs; ++i) {
+        Function *fn = &prog->funcs[i];
         if(!generate_fasm_x86_64_win32_function(output, fn)) {
             compiler_diagf(fn->loc, "Failed to compile function %s", fn->name);
             return false;
         }
     }
-    generate_fasm_x86_64_win32_static_data(output, com->static_data);
+    generate_fasm_x86_64_win32_static_data(output, prog->static_data, prog->count_static_data);
     generate_fasm_x86_64_win32_program_epilog(output);
     return true;
 }

@@ -6,6 +6,35 @@
 #include "codegen.h"
 #include "flag.h"
 
+typedef enum {
+    VAR_LOCAL  = 0,
+    VAR_EXTERN,
+} VarStorage;
+
+typedef struct {
+    const char *name;
+    size_t index;
+    VarStorage storage;
+} Var;
+
+typedef struct Compiler {
+    Arena arena;
+    Target target;
+    Nob_String_Builder static_data;
+
+    struct {
+        Function *items;
+        size_t count;
+        size_t capacity;
+    } funcs;
+
+    struct {
+        Var *items;
+        size_t count;
+        size_t capacity;
+    } vars;
+} Compiler;
+
 Var *find_var(const Compiler *com, const char *name)
 {
     for(size_t i = 0; i < com->vars.count; ++i) {
@@ -367,7 +396,13 @@ bool compile_program(Compiler *com, Nob_String_Builder *output, Lexer *lex)
 
     if(ok) {
         ok = ok && lexer_get_and_expect_token(lex, TOKEN_EOF);
-        ok = ok && generate_program(com, output);
+        Program program = {0};
+        program.target = com->target;
+        program.funcs = com->funcs.items;
+        program.count_funcs = com->funcs.count;
+        program.static_data = com->static_data.items;
+        program.count_static_data = com->static_data.count;
+        ok = ok && generate_program(&program, output);
     }
 
     for(size_t i = 0; i < com->funcs.count; ++i) {
