@@ -1,11 +1,18 @@
-fn main() 
-    : ptr 
+function main() 
+    : ptr, dptr
 {
-    extern malloc, printf;
+    extern printf;
+    extern malloc;
     // 8 is a single word
     ptr = malloc(8 * 2);
-    *(ptr + (0 * 8)) = 1;
-    *(ptr + (1 * 8)) = 2;
-    printf("ptr[0] = %d\n", *(ptr + (0 * 8)));
-    printf("ptr[1] = %d\n", *(ptr + (1 * 8)));
+    dptr = 0 * 8 + ptr;
+    *dptr = 1;
+    dptr = 1 * 8 + ptr;
+    *dptr = 2;
+
+    dptr = 0 * 8 + ptr;
+    printf("ptr[0] = %d\n", *dptr);
+
+    dptr = 1 * 8 + ptr;
+    printf("ptr[1] = %d\n", *dptr);
 }

@@ -47,6 +47,11 @@ static bool load_arg(Nob_String_Builder *output, Inst inst, int arg_index, const
                 if(arg.static_offset > 0) 
                     nob_sb_appendf(output, "    add rax, %zu\n", arg.static_offset);
             } break;
+        case ARG_DEREF:
+            {
+                nob_sb_appendf(output, "    mov %s, QWORD [rbp - %zu]\n", dst, (arg.local_index + 1) * 8);
+                nob_sb_appendf(output, "    mov %s, QWORD [%s]\n", dst, dst);
+            } break;
         default:
             {
                 compiler_diagf(inst.loc, "CODEGEN ERROR: Could not load argument %d for instruction %s with type %s into %s\n",
@@ -152,6 +157,14 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                     nob_sb_appendf(output, "    add rax, rdx\n");
                     nob_sb_appendf(output, "    mov QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
                 } break;
+            case INST_MUL:
+                {
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    load_arg(output, inst, 1, "rax");
+                    load_arg(output, inst, 2, "rbx");
+                    nob_sb_appendf(output, "    imul rax, rbx\n");
+                    nob_sb_appendf(output, "    mov  QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
             case INST_SUB:
                 {
                     if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
@@ -159,6 +172,13 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                     load_arg(output, inst, 2, "rdx");
                     nob_sb_appendf(output, "    sub rax, rdx\n");
                     nob_sb_appendf(output, "    mov QWORD [rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
+                } break;
+            case INST_STORE:
+                {
+                    if(!load_arg(output, inst, 1, "rdx")) return false;
+                    if(!expect_inst_arg(inst, 0, ARG_DEREF)) return false;
+                    nob_sb_appendf(output, "    mov rax, QWORD [rbp - %zu]\n", (inst.args[0].deref_local_index + 1) * 8);
+                    nob_sb_appendf(output, "    mov QWORD [rax], rdx\n");
                 } break;
             case INST_LOCAL_ASSIGN:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
@@ -220,8 +240,9 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                 break;
             case INST_FUNCALL:
                 {
-                    if(!expect_inst_arg(inst, 0, ARG_NAME)) return false;
-                    if(!expect_inst_arg(inst, 1, ARG_LIST)) return false;
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return false;
+                    if(!expect_inst_arg(inst, 1, ARG_NAME)) return false;
+                    if(!expect_inst_arg(inst, 2, ARG_LIST)) return false;
 
                     static const char *WIN32_PARAM_REGISTERS[] = { "rcx", "rdx", "r8", "r9", };
                     static const char *LINUX_PARAM_REGISTERS[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9", };
@@ -230,13 +251,13 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
 
                     // If WIN32 only
                     size_t rest = 0;
-                    if(inst.args[1].list.count > param_registers_count) {
-                        rest = inst.args[1].list.count - param_registers_count;
+                    if(inst.args[2].list.count > param_registers_count) {
+                        rest = inst.args[2].list.count - param_registers_count;
                         nob_sb_appendf(output, "    sub rsp, %zu\n", rest * 8);
                     }
 
-                    for(size_t i = 0; i < inst.args[1].list.count; ++i) {
-                        Arg arg = inst.args[1].list.items[i]; 
+                    for(size_t i = 0; i < inst.args[2].list.count; ++i) {
+                        Arg arg = inst.args[2].list.items[i]; 
                         switch(arg.kind) {
                             case ARG_LOCAL_INDEX:
                                 nob_sb_appendf(output, "    mov rax, QWORD[rbp - %zu]\n", (arg.local_index + 1) * 8);
@@ -249,10 +270,16 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                                 if(arg.static_offset > 0) 
                                     nob_sb_appendf(output, "    add rax, %zu\n", arg.static_offset);
                                 break;
+                            case ARG_DEREF:
+                                nob_sb_appendf(output, "    mov rax, QWORD [rbp - %zu]\n", (arg.local_index + 1) * 8);
+                                nob_sb_appendf(output, "    mov rax, QWORD [rax]\n");
+                                break;
                             default:
-                                compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 1 for instruction %s with type %s", 
+                                compiler_diagf(inst.loc, "CODEGEN ERROR: Invalid argument 2 (which is a list [%zu]) "
+                                        "for instruction %s with type %s", 
+                                        i,
                                         display_inst_kind(inst.kind),
-                                        display_arg_kind(inst.args[1].kind));
+                                        display_arg_kind(arg.kind));
                                 break;
                         }
 
@@ -263,7 +290,8 @@ bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *f
                         }
                     }
 
-                    nob_sb_appendf(output, "    call %s\n", inst.args[0].name);
+                    nob_sb_appendf(output, "    call %s\n", inst.args[1].name);
+                    nob_sb_appendf(output, "    mov  QWORD[rbp - %zu], rax\n", (inst.args[0].local_index + 1) * 8);
                     if(rest > 0) nob_sb_appendf(output, "    add  rsp, %zu\n", rest * 8);
                 }
                 break;

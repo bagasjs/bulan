@@ -71,6 +71,7 @@ const char *display_arg_kind(ArgKind kind)
         case ARG_NAME: return "name";
         case ARG_STATIC_DATA: return "static data";
         case ARG_LIST: return "list";
+        case ARG_DEREF: return "deref";
         default: assert(0 && "Unreachable: invalid arg kind at display_arg_kind");
     }
     return NULL;
@@ -87,6 +88,7 @@ const char *display_inst_kind(InstKind kind)
         case INST_EXTERN: return "EXTERN";
         case INST_ADD: return "ADD";
         case INST_SUB: return "SUB";
+        case INST_MUL: return "MUL";
         case INST_LT: return "LT";
         case INST_LE: return "LE";
         case INST_GT: return "GT";
@@ -95,6 +97,7 @@ const char *display_inst_kind(InstKind kind)
         case INST_NE: return "NE";
         case INST_BRANCH: return "BRANCH";
         case INST_LABEL: return "LABEL";
+        case INST_STORE: return "STORE";
         default: assert(0 && "Unreachable: invalid instruction kind at display_inst_kind");
     }
 }
@@ -143,6 +146,9 @@ void dump_arg(Arg arg, const char *end)
         case ARG_INT_VALUE:
             printf("$%lld%s", arg.int_value, end);
             break;
+        case ARG_DEREF:
+            printf("[#%zu]%s", arg.local_index, end);
+            break;
         case ARG_LIST:
             printf("(");
             for(size_t i = 0; i < arg.list.count; ++i) {
@@ -173,6 +179,12 @@ void dump_function(Function *fn)
                 dump_arg(inst.args[0], " = ");
                 dump_arg(inst.args[1], "\n");
                 break;
+            case INST_STORE:
+                if(!expect_inst_arg(inst, 0, ARG_DEREF)) return;
+                printf("    _  = store");
+                dump_arg(inst.args[0], ",");
+                dump_arg(inst.args[1], "\n");
+                break;
             case INST_EXTERN:
                 if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
                 printf("    _ = extern ");
@@ -180,16 +192,24 @@ void dump_function(Function *fn)
                 break;
             case INST_FUNCALL:
                 {
-                    if(!expect_inst_arg(inst, 0, ARG_NAME)) return;
-                    if(!expect_inst_arg(inst, 1, ARG_LIST)) return;
+                    if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                    if(!expect_inst_arg(inst, 1, ARG_NAME)) return;
+                    if(!expect_inst_arg(inst, 2, ARG_LIST)) return;
                     printf("    funcall ");
-                    dump_arg(inst.args[0], ", ");
-                    dump_arg(inst.args[1], "\n");
+                    dump_arg(inst.args[0], " = ");
+                    dump_arg(inst.args[1], ", ");
+                    dump_arg(inst.args[2], "\n");
                 }
                 break;
             case INST_ADD:
                 if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
                 printf("    #%zu = add ", inst.args[0].local_index);
+                dump_arg(inst.args[1], ", ");
+                dump_arg(inst.args[2], "\n");
+                break;
+            case INST_MUL:
+                if(!expect_inst_arg(inst, 0, ARG_LOCAL_INDEX)) return;
+                printf("    #%zu = mul ", inst.args[0].local_index);
                 dump_arg(inst.args[1], ", ");
                 dump_arg(inst.args[2], "\n");
                 break;

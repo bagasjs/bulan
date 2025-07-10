@@ -61,31 +61,90 @@ Var *alloc_var_local(Compiler *com, const char *name, size_t index)
     return local;
 }
 
-bool compile_primary_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com) 
+typedef struct CompileExprResult {
+    Arg  arg;
+    bool lvalue;
+} CompileExprResult;
+
+bool compile_expression(Compiler *com, Function *fn, Lexer *lex, CompileExprResult *result);
+bool compile_binop_or_primary_expression(Compiler *com, Function *fn, Lexer *lex, CompileExprResult *result);
+
+bool compile_primary_expression(Compiler *com, Function *fn, Lexer *lex, CompileExprResult *result)
 {
-    assert(result_arg);
+    assert(result);
     lexer_get_token(lex);
+    Loc loc = lex->loc;
     switch(lex->token) {
         case TOKEN_INT_LIT:
-            *result_arg = MAKE_INT_VALUE_ARG(lex->int_number);
+            result->arg = MAKE_INT_VALUE_ARG(lex->int_number);
+            result->lvalue = false;
             return true;
+        case TOKEN_MUL:
+            {
+                if(!compile_primary_expression(com, fn, lex, result)) return false;
+                size_t index = alloc_local(fn);
+                push_inst(fn, (Inst) {
+                    .kind = INST_LOCAL_ASSIGN,
+                    .loc = loc,
+                    .args[0] = MAKE_LOCAL_INDEX_ARG(index),
+                    .args[1] = result->arg,
+                });
+                result->lvalue = true;
+                result->arg = MAKE_DEREF_ARG(index);
+                return true;
+            } break;
         case TOKEN_STRING_LIT:
-            *result_arg = MAKE_STATIC_DATA_ARG(com->static_data.count);
+            result->arg = MAKE_STATIC_DATA_ARG(com->static_data.count);
+            result->lvalue = false;
             nob_sb_append_cstr(&com->static_data, lex->string);
             nob_da_append(&com->static_data, 0);
             return true;
         case TOKEN_ID:
             {
-                Var *var = find_var(com, lex->string);
-                if(var == NULL) {
-                    compiler_diagf(lex->loc, "Could not find %s in scope", lex->string);
-                    return false;
+                ParsePoint saved_point = lex->parse_point;
+                char *name = arena_strdup(&com->arena, lex->string);
+                if(!lexer_get_token(lex)) return false;
+                if(lex->token == TOKEN_OPAREN) {
+                    CompileExprResult expr = {0};
+                    ArgList args = {0};
+                    ParsePoint saved_point = lex->parse_point;
+                    lexer_get_token(lex);
+                    while(true) {
+                        if(lex->token == TOKEN_CPAREN) break;
+                        lex->parse_point = saved_point;
+                        if(!compile_binop_or_primary_expression(com, fn, lex, &expr)) return false;
+                        arena_da_append(&com->arena, &args, expr.arg);
+                        lexer_get_token(lex);
+                        if(lex->token == TOKEN_CPAREN) break;
+                        if(!lexer_expect_token(lex, TOKEN_COMMA)) return false;
+                        saved_point = lex->parse_point;
+                        lexer_get_token(lex);
+                    }
+                    lexer_expect_token(lex, TOKEN_CPAREN);
+                    size_t index = alloc_local(fn);
+                    push_inst(fn, (Inst){
+                        .loc = loc,
+                        .kind = INST_FUNCALL,
+                        .args[0] = MAKE_LOCAL_INDEX_ARG(index),
+                        .args[1] = MAKE_NAME_ARG(name),
+                        .args[2] = MAKE_LIST_ARG(args),
+                    });
+                    result->arg = MAKE_LOCAL_INDEX_ARG(index);
+                    result->lvalue = true;
+                } else {
+                    lex->parse_point = saved_point;
+                    Var *var = find_var(com, name);
+                    if(var == NULL) {
+                        compiler_diagf(lex->loc, "Could not find %s in scope", lex->string);
+                        return false;
+                    }
+                    if(var->storage != VAR_LOCAL) {
+                        compiler_diagf(lex->loc, "Variable %s is not a local variable", var->name);
+                        return false;
+                    }
+                    result->arg = MAKE_LOCAL_INDEX_ARG(var->index);
+                    result->lvalue = true;
                 }
-                if(var->storage != VAR_LOCAL) {
-                    compiler_diagf(lex->loc, "Variable %s is not a local variable", var->name);
-                    return false;
-                }
-                *result_arg = MAKE_LOCAL_INDEX_ARG(var->index);
                 return true;
             }
         default:
@@ -99,6 +158,7 @@ InstKind token_to_binop_inst_kind(Token token)
     switch(token) {
         case TOKEN_PLUS:  return INST_ADD;
         case TOKEN_MINUS: return INST_SUB;
+        case TOKEN_MUL:  return INST_MUL;
         case TOKEN_LESS:  return INST_LT;
         case TOKEN_LESSEQ:  return INST_LE;
         case TOKEN_GREATER:  return INST_GT;
@@ -109,48 +169,93 @@ InstKind token_to_binop_inst_kind(Token token)
     }
 }
 
-bool compile_expression(Arg *result_arg, Function *fn, Lexer *lex, Compiler *com)
+bool compile_binop_or_primary_expression(Compiler *com, Function *fn, Lexer *lex, CompileExprResult *result)
 {
-    Arg lhs = {0};
-    if(!compile_primary_expression(&lhs, fn, lex, com)) return false;
+    CompileExprResult lhs = {0};
+    if(!compile_primary_expression(com, fn, lex, &lhs)) return false;
 
     ParsePoint saved_point = lex->parse_point;
     lexer_get_token(lex);
     InstKind inst_kind = token_to_binop_inst_kind(lex->token);
     if(inst_kind != INST_NOP) {
-        Arg result = MAKE_LOCAL_INDEX_ARG(alloc_local(fn));
+        CompileExprResult result_expr = {0};
+        result_expr.arg = MAKE_LOCAL_INDEX_ARG(alloc_local(fn));
         while((inst_kind = token_to_binop_inst_kind(lex->token)) != INST_NOP) {
-            Arg rhs = {0};
-            if(!compile_primary_expression(&rhs, fn, lex, com)) return false;
+            CompileExprResult rhs = {0};
+            if(!compile_primary_expression(com, fn, lex, &rhs)) return false;
             push_inst(fn, (Inst) {
                 .kind = inst_kind,
-                .args[0] = result,
-                .args[1] = lhs,
-                .args[2] = rhs,
+                .args[0] = result_expr.arg,
+                .args[1] = lhs.arg,
+                .args[2] = rhs.arg,
             });
-            lhs = result;
+            lhs = result_expr;
             saved_point = lex->parse_point;
             lexer_get_token(lex);
         }
-        *result_arg = result;
+        *result = result_expr;
     } else {
-        *result_arg = lhs;
+        *result = lhs;
     }
     lex->parse_point = saved_point;
 
     return true;
 }
 
+bool compile_expression(Compiler *com, Function *fn, Lexer *lex, CompileExprResult *result)
+{
+    Loc loc = lex->loc;
+    if(!compile_binop_or_primary_expression(com, fn, lex, result)) return false;
+    ParsePoint saved_point = lex->parse_point;
+    if(!lexer_get_token(lex)) return false;
+    if(lex->token == TOKEN_EQ) {
+
+        if(!result->lvalue) {
+            compiler_diagf(loc, "Invalid assignment to rvalue\n");
+            return false;
+        }
+
+        CompileExprResult rhs = {0};
+        if(!compile_expression(com, fn, lex, &rhs)) return false;
+        InstKind inst_kind = INST_NOP;
+        switch(result->arg.kind) {
+            case ARG_LOCAL_INDEX:
+                inst_kind = INST_LOCAL_ASSIGN;
+                break;
+            case ARG_DEREF:
+                inst_kind = INST_STORE;
+                break;
+            default:
+                break;
+        }
+
+        if(inst_kind == INST_NOP) {
+            compiler_diagf(loc, "Something went wrong at implemented in compiler source %s:%zu\n", __FILE__, __LINE__);
+            return false;
+        }
+        push_inst(fn, (Inst) {
+            .loc = loc,
+            .kind = inst_kind,
+            .args[0] = result->arg,
+            .args[1] = rhs.arg,
+        });
+    } else {
+        lex->parse_point = saved_point;
+    }
+    return true;
+}
+
 bool compile_block(Compiler *com, Function *fn, Lexer *lex)
 {
+    ParsePoint saved_point = lex->parse_point;
     while(lexer_get_token(lex) && lex->token != TOKEN_CCURLY) {
         Loc stmt_loc = lex->loc;
         switch(lex->token) {
             case TOKEN_IF:
                 {
-                    Arg arg = {0};
+                    CompileExprResult expr = {0};
                     if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
-                    if(!compile_expression(&arg, fn, lex, com)) return false;
+                    if(!compile_expression(com, fn, lex, &expr)) return false;
                     if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
                     size_t then_label  = alloc_label(fn);
                     size_t next_label = alloc_label(fn);
@@ -159,7 +264,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         .kind = INST_BRANCH,
                         .args[0] = MAKE_LABEL_ARG(then_label),
                         .args[1] = MAKE_LABEL_ARG(next_label),
-                        .args[2] = arg,
+                        .args[2] = expr.arg,
                     });
                     if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
                     push_inst(fn, (Inst) {
@@ -190,14 +295,14 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                                 next_label = alloc_label(fn);
                                 should_break = false;
                                 if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
-                                if(!compile_expression(&arg, fn, lex, com)) return false;
+                                if(!compile_expression(com, fn, lex, &expr)) return false;
                                 if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
                                 Inst *inst = push_inst(fn, (Inst) {
                                     .loc  = stmt_loc,
                                     .kind = INST_BRANCH,
                                     .args[0] = MAKE_LABEL_ARG(then_label),
                                     .args[1] = MAKE_LABEL_ARG(next_label),
-                                    .args[2] = arg,
+                                    .args[2] = expr.arg,
                                 });
                                 if(!lexer_get_token(lex)) return false;
                                 push_inst(fn, (Inst) {
@@ -247,15 +352,15 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         .args[0] = MAKE_LABEL_ARG(start_label),
                     });
 
-                    Arg arg = {0};
-                    if(!compile_expression(&arg, fn, lex, com)) return false;
+                    CompileExprResult expr = {0};
+                    if(!compile_expression(com, fn, lex, &expr)) return false;
                     if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
                     Inst *inst = push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_BRANCH,
                         .args[0] = MAKE_LABEL_ARG(body_label),
                         .args[1] = MAKE_LABEL_ARG(end_label),
-                        .args[2] = arg,
+                        .args[2] = expr.arg,
                     });
                     if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
                     push_inst(fn, (Inst) {
@@ -276,60 +381,6 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     });
                     fn->labels_count += 3;
                 } break;
-            case TOKEN_ID:
-                {
-                    char *name = arena_strdup(&com->arena, lex->string);
-                    lexer_get_token(lex);
-                    if(lex->token == TOKEN_EQ) {
-                        // Assignment
-                        Var *var = find_var(com, name);
-                        if(var == NULL) {
-                            compiler_diagf(lex->loc, "Could not find %s in scope", name);
-                            return false;
-                        }
-                        if(var->storage != VAR_LOCAL) {
-                            compiler_diagf(lex->loc, "Variable %s is not a local variable", name);
-                            return false;
-                        }
-                        Arg b = {0};
-                        if(!compile_expression(&b, fn, lex, com)) return false;
-                        push_inst(fn, (Inst){
-                            .loc = stmt_loc,
-                            .kind = INST_LOCAL_ASSIGN,
-                            .args[0] = MAKE_LOCAL_INDEX_ARG(var->index),
-                            .args[1] = b,
-                        });
-                    } else if (lex->token == TOKEN_OPAREN) {
-                        // Function call
-                        Arg b = {0};
-                        ArgList args = {0};
-                        ParsePoint saved_point = lex->parse_point;
-                        lexer_get_token(lex);
-                        while(true) {
-                            if(lex->token == TOKEN_CPAREN) break;
-                            lex->parse_point = saved_point;
-                            if(!compile_expression(&b, fn, lex, com)) return false;
-                            arena_da_append(&com->arena, &args, b);
-                            lexer_get_token(lex);
-                            if(lex->token == TOKEN_CPAREN) break;
-                            if(!lexer_expect_token(lex, TOKEN_COMMA)) return false;
-                            saved_point = lex->parse_point;
-                            lexer_get_token(lex);
-                        }
-                        lexer_expect_token(lex, TOKEN_CPAREN);
-
-                        push_inst(fn, (Inst){
-                            .loc = stmt_loc,
-                            .kind = INST_FUNCALL,
-                            .args[0] = MAKE_NAME_ARG(name),
-                            .args[1] = MAKE_LIST_ARG(args),
-                        });
-                    } else {
-                        compiler_diagf(stmt_loc, "Invalid follow up token after identifier %s", name);
-                        return false;
-                    }
-                    lexer_get_and_expect_token(lex, TOKEN_SEMICOLON);
-                } break;
             case TOKEN_EXTERN:
                 {
                     lexer_get_and_expect_token(lex, TOKEN_ID);
@@ -343,10 +394,13 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                 } break;
             default:
                 {
-                    compiler_diagf(stmt_loc, "Unexpected token %s to start a statement", lexer_display_token(lex->token));
-                    return false;
+                    CompileExprResult expr = {0};
+                    lex->parse_point = saved_point;
+                    if(!compile_expression(com, fn, lex, &expr)) return false;
+                    lexer_get_and_expect_token(lex, TOKEN_SEMICOLON);
                 } break;
         }
+        saved_point = lex->parse_point;
     }
 
     return true;

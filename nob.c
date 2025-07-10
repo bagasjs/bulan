@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     if(!build_obj(&cmd, BUILD_DIR"/arena.o", "./thirdparty/arena.c")) return -1;
     if(!build_obj(&cmd, BUILD_DIR"/flag.o", "./thirdparty/flag.c")) return -1;
 
-    nob_cmd_append(&cmd, "clang");
+    nob_cc(&cmd);
     nob_cmd_append(&cmd, "-Wall", "-Wextra", "-g", "-fsanitize=address");
     nob_cmd_append(&cmd, "-D_CRT_SECURE_NO_WARNINGS");
     nob_cmd_append(&cmd, "-I", "thirdparty");

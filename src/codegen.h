@@ -11,6 +11,7 @@ typedef enum {
     ARG_INT_VALUE,
     ARG_LOCAL_INDEX,
     ARG_STATIC_DATA,
+    ARG_DEREF,
     ARG_LABEL,
     ARG_LIST,
     ARG_NAME,
@@ -32,6 +33,7 @@ struct Arg {
         char *name;
         int64_t int_value;
         ArgList list;
+        size_t deref_local_index;
     };
 };
 
@@ -42,6 +44,7 @@ struct Arg {
 #define MAKE_NAME_ARG(value)        ((Arg){ .kind = ARG_NAME,        .name          = (value) })
 #define MAKE_LIST_ARG(value)        ((Arg){ .kind = ARG_LIST,        .list          = (value) })
 #define MAKE_STATIC_DATA_ARG(offset)((Arg){ .kind = ARG_STATIC_DATA, .static_offset = (offset)})
+#define MAKE_DEREF_ARG(value)       ((Arg){ .kind = ARG_DEREF,       .deref_local_index = (value)})
 
 typedef enum {
     INST_NOP,
@@ -55,6 +58,9 @@ typedef enum {
     // assign arg[0].local, arg[1]
     INST_LOCAL_ASSIGN,
 
+    // store arg[0].deref_local_index, arg[1]
+    INST_STORE,
+
     // jmp arg[0].block
     INST_JMP,
 
@@ -67,6 +73,7 @@ typedef enum {
     // binop arg[0].local, arg[1], arg[2]
     INST_ADD,
     INST_SUB,
+    INST_MUL,
     INST_LT,
     INST_LE,
     INST_GT,
@@ -94,6 +101,7 @@ typedef struct {
     size_t labels_count;
 } Function;
 
+// TODO: prefix the functions
 size_t alloc_local(Function *fn);
 size_t alloc_label(Function *fn);
 Inst *push_inst(Function *fn, Inst inst);
@@ -117,9 +125,6 @@ typedef enum {
     _COUNT_TARGETS,
 } Target;
 
-// TODO: separate backend data into separate struct from 
-//       struct Compiler. It would be cool if I can reuse
-//       the backend for many programming language
 typedef struct {
     Target target;
     char *static_data;

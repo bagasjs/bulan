@@ -34,7 +34,7 @@ void compiler_diagf(Loc loc, const char *fmt, ...);
 // TODO: instead of registering tokens like this maybe 
 //       having the user to register the tokens would be 
 //       then I can use the lexer for multiple programming
-//       language. We can use Trie data structure for this
+//       language.
 #define PUNCT_TOKEN_LIST    \
     X(QUESTION     , "?"  ) \
     X(OCURLY       , "{"  ) \
@@ -148,8 +148,8 @@ const char *lexer_display_token(Token token);
 Loc lexer_loc(Lexer *lex);
 
 // TODO: let user register their own tokens
-void lexer_register_punct(Lexer *lex, const char *punct, int token);
-void lexer_register_keyword(Lexer *lex, const char *keyword, int token);
+// void lexer_register_punct(Lexer *lex, const char *punct, int token);
+// void lexer_register_keyword(Lexer *lex, const char *keyword, int token);
 // void lexer_register_default_tokens(Lexer *lex); // C tokens
 
 #endif // LEXER_H_
