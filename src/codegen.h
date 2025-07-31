@@ -101,10 +101,9 @@ typedef struct {
     size_t labels_count;
 } Function;
 
-// TODO: prefix the functions
-size_t alloc_local(Function *fn);
-size_t alloc_label(Function *fn);
-Inst *push_inst(Function *fn, Inst inst);
+size_t func_alloc_local(Function *fn);
+size_t func_alloc_label(Function *fn);
+Inst  *func_push_inst(Function *fn, Inst inst);
 
 bool expect_inst_arg(Inst inst, int arg_index, ArgKind kind);
 const char *display_arg_kind(ArgKind kind);

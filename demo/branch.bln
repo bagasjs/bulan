@@ -1,8 +1,6 @@
-function main()
-    : a
-{
+function main() {
     extern printf;
-    a = 3;
+    var a = 3;
 
     if(a == 0) {
         printf("a is 0\n");

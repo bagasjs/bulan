@@ -1,6 +1,6 @@
 function foo() 
-    : a, b, color
 {
+    var a, b;
     a = 40;
     b = 34;
     putchar(a + b - 5);

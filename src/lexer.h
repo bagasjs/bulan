@@ -85,6 +85,7 @@ void compiler_diagf(Loc loc, const char *fmt, ...);
     X(GOTO         , "goto"      ) \
     X(RETURN       , "return"    ) \
     X(FUNCTION     , "function"  ) \
+    X(VAR          , "var"       ) \
 
 typedef enum {
     // Terminal

@@ -82,8 +82,8 @@ bool compile_primary_expression(Compiler *com, Function *fn, Lexer *lex, Compile
         case TOKEN_MUL:
             {
                 if(!compile_primary_expression(com, fn, lex, result)) return false;
-                size_t index = alloc_local(fn);
-                push_inst(fn, (Inst) {
+                size_t index = func_alloc_local(fn);
+                func_push_inst(fn, (Inst) {
                     .kind = INST_LOCAL_ASSIGN,
                     .loc = loc,
                     .args[0] = MAKE_LOCAL_INDEX_ARG(index),
@@ -121,8 +121,8 @@ bool compile_primary_expression(Compiler *com, Function *fn, Lexer *lex, Compile
                         lexer_get_token(lex);
                     }
                     lexer_expect_token(lex, TOKEN_CPAREN);
-                    size_t index = alloc_local(fn);
-                    push_inst(fn, (Inst){
+                    size_t index = func_alloc_local(fn);
+                    func_push_inst(fn, (Inst){
                         .loc = loc,
                         .kind = INST_FUNCALL,
                         .args[0] = MAKE_LOCAL_INDEX_ARG(index),
@@ -179,11 +179,11 @@ bool compile_binop_or_primary_expression(Compiler *com, Function *fn, Lexer *lex
     InstKind inst_kind = token_to_binop_inst_kind(lex->token);
     if(inst_kind != INST_NOP) {
         CompileExprResult result_expr = {0};
-        result_expr.arg = MAKE_LOCAL_INDEX_ARG(alloc_local(fn));
+        result_expr.arg = MAKE_LOCAL_INDEX_ARG(func_alloc_local(fn));
         while((inst_kind = token_to_binop_inst_kind(lex->token)) != INST_NOP) {
             CompileExprResult rhs = {0};
             if(!compile_primary_expression(com, fn, lex, &rhs)) return false;
-            push_inst(fn, (Inst) {
+            func_push_inst(fn, (Inst) {
                 .kind = inst_kind,
                 .args[0] = result_expr.arg,
                 .args[1] = lhs.arg,
@@ -233,7 +233,7 @@ bool compile_expression(Compiler *com, Function *fn, Lexer *lex, CompileExprResu
             compiler_diagf(loc, "Something went wrong at implemented in compiler source %s:%zu\n", __FILE__, __LINE__);
             return false;
         }
-        push_inst(fn, (Inst) {
+        func_push_inst(fn, (Inst) {
             .loc = loc,
             .kind = inst_kind,
             .args[0] = result->arg,
@@ -251,15 +251,43 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
     while(lexer_get_token(lex) && lex->token != TOKEN_CCURLY) {
         Loc stmt_loc = lex->loc;
         switch(lex->token) {
+            case TOKEN_VAR:
+                {
+                    if(!lexer_get_and_expect_token(lex, TOKEN_ID)) return false;
+                    if(find_var(com, lex->string) != NULL) {
+                        compiler_diagf(lex->loc, "Variable with name `%s` is already exists", lex->string);
+                        return false;
+                    }
+                    alloc_var_local(com, arena_strdup(&com->arena, lex->string), func_alloc_local(fn));
+                    if(!lexer_get_token(lex)) return false;
+                    switch(lex->token) {
+                        case TOKEN_COMMA:
+                            break;
+                    }
+                    if(lex->toke
+
+
+
+
+        while(lex->token == TOKEN_ID) {
+            if(find_var(com, lex->string) != NULL) {
+                compiler_diagf(lex->loc, "Variable with name `%s` is already exists", lex->string);
+                return false;
+            }
+            alloc_var_local(com, arena_strdup(&com->arena, lex->string), func_alloc_local(fn));
+            lexer_get_token(lex);
+            if(lex->token == TOKEN_COMMA) lexer_get_token(lex);
+        }
+                } break;
             case TOKEN_IF:
                 {
                     CompileExprResult expr = {0};
                     if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
                     if(!compile_expression(com, fn, lex, &expr)) return false;
                     if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
-                    size_t then_label  = alloc_label(fn);
-                    size_t next_label = alloc_label(fn);
-                    Inst *inst = push_inst(fn, (Inst) {
+                    size_t then_label = func_alloc_label(fn);
+                    size_t next_label = func_alloc_label(fn);
+                    Inst *inst = func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_BRANCH,
                         .args[0] = MAKE_LABEL_ARG(then_label),
@@ -267,7 +295,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         .args[2] = expr.arg,
                     });
                     if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
-                    push_inst(fn, (Inst) {
+                    func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_LABEL,
                         .args[0] = MAKE_LABEL_ARG(then_label),
@@ -276,14 +304,14 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     ParsePoint saved_point = lex->parse_point;
                     if(!lexer_get_token(lex)) return false;
                     if(lex->token == TOKEN_ELSE) {
-                        size_t end_label = alloc_label(fn);
-                        push_inst(fn, (Inst) {
+                        size_t end_label = func_alloc_label(fn);
+                        func_push_inst(fn, (Inst) {
                             .loc  = stmt_loc,
                             .kind = INST_JMP,
                             .args[0] = MAKE_LABEL_ARG(end_label),
                         });
                         while(lex->token == TOKEN_ELSE) {
-                            push_inst(fn, (Inst) {
+                            func_push_inst(fn, (Inst) {
                                 .loc  = stmt_loc,
                                 .kind = INST_LABEL,
                                 .args[0] = MAKE_LABEL_ARG(next_label),
@@ -291,13 +319,13 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                             if(!lexer_get_token(lex)) return false;
                             bool should_break = true;
                             if(lex->token == TOKEN_IF) {
-                                then_label = alloc_label(fn);
-                                next_label = alloc_label(fn);
+                                then_label = func_alloc_label(fn);
+                                next_label = func_alloc_label(fn);
                                 should_break = false;
                                 if(!lexer_get_and_expect_token(lex, TOKEN_OPAREN)) return false;
                                 if(!compile_expression(com, fn, lex, &expr)) return false;
                                 if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
-                                Inst *inst = push_inst(fn, (Inst) {
+                                Inst *inst = func_push_inst(fn, (Inst) {
                                     .loc  = stmt_loc,
                                     .kind = INST_BRANCH,
                                     .args[0] = MAKE_LABEL_ARG(then_label),
@@ -305,7 +333,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                                     .args[2] = expr.arg,
                                 });
                                 if(!lexer_get_token(lex)) return false;
-                                push_inst(fn, (Inst) {
+                                func_push_inst(fn, (Inst) {
                                     .loc  = stmt_loc,
                                     .kind = INST_LABEL,
                                     .args[0] = MAKE_LABEL_ARG(then_label),
@@ -313,7 +341,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                             }
                             if(!lexer_expect_token(lex, TOKEN_OCURLY)) return false;
                             if(!compile_block(com, fn, lex)) return false;
-                            push_inst(fn, (Inst) {
+                            func_push_inst(fn, (Inst) {
                                 .loc  = stmt_loc,
                                 .kind = INST_JMP,
                                 .args[0] = MAKE_LABEL_ARG(end_label),
@@ -321,19 +349,19 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                             if(should_break) break;
                             if(!lexer_get_token(lex)) return false;
                         }
-                        push_inst(fn, (Inst) {
+                        func_push_inst(fn, (Inst) {
                             .loc  = stmt_loc,
                             .kind = INST_LABEL,
                             .args[0] = MAKE_LABEL_ARG(end_label),
                         });
                     } else {
                         lex->parse_point = saved_point;
-                        push_inst(fn, (Inst) {
+                        func_push_inst(fn, (Inst) {
                             .loc  = stmt_loc,
                             .kind = INST_JMP,
                             .args[0] = MAKE_LABEL_ARG(next_label),
                         });
-                        push_inst(fn, (Inst) {
+                        func_push_inst(fn, (Inst) {
                             .loc  = stmt_loc,
                             .kind = INST_LABEL,
                             .args[0] = MAKE_LABEL_ARG(next_label),
@@ -346,7 +374,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     size_t body_label  = fn->labels_count + 1;
                     size_t end_label   = fn->labels_count + 2;
                     lexer_get_and_expect_token(lex, TOKEN_OPAREN);
-                    push_inst(fn, (Inst) {
+                    func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_LABEL,
                         .args[0] = MAKE_LABEL_ARG(start_label),
@@ -355,7 +383,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                     CompileExprResult expr = {0};
                     if(!compile_expression(com, fn, lex, &expr)) return false;
                     if(!lexer_get_and_expect_token(lex, TOKEN_CPAREN)) return false;
-                    Inst *inst = push_inst(fn, (Inst) {
+                    Inst *inst = func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_BRANCH,
                         .args[0] = MAKE_LABEL_ARG(body_label),
@@ -363,18 +391,18 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         .args[2] = expr.arg,
                     });
                     if(!lexer_get_and_expect_token(lex, TOKEN_OCURLY)) return false;
-                    push_inst(fn, (Inst) {
+                    func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_LABEL,
                         .args[0] = MAKE_LABEL_ARG(body_label),
                     });
                     if(!compile_block(com, fn, lex)) return false;
-                    push_inst(fn, (Inst) {
+                    func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_JMP,
                         .args[0] = MAKE_LABEL_ARG(start_label),
                     });
-                    push_inst(fn, (Inst) {
+                    func_push_inst(fn, (Inst) {
                         .loc  = stmt_loc,
                         .kind = INST_LABEL,
                         .args[0] = MAKE_LABEL_ARG(end_label),
@@ -389,7 +417,7 @@ bool compile_block(Compiler *com, Function *fn, Lexer *lex)
                         .kind = INST_EXTERN,
                         .args[0] = MAKE_NAME_ARG(arena_strdup(&com->arena, lex->string)),
                     };
-                    push_inst(fn, inst);
+                    func_push_inst(fn, inst);
                     lexer_get_and_expect_token(lex, TOKEN_SEMICOLON);
                 } break;
             default:
@@ -425,7 +453,7 @@ bool compile_function(Compiler *com, Function *fn, Lexer *lex, Nob_String_Builde
                 compiler_diagf(lex->loc, "Variable with name `%s` is already exists", lex->string);
                 return false;
             }
-            alloc_var_local(com, arena_strdup(&com->arena, lex->string), alloc_local(fn));
+            alloc_var_local(com, arena_strdup(&com->arena, lex->string), func_alloc_local(fn));
             lexer_get_token(lex);
             if(lex->token == TOKEN_COMMA) lexer_get_token(lex);
         }

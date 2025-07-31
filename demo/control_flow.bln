@@ -5,9 +5,9 @@
 // extern function fprintf(stream, fmt, ...);
 
 function main() 
-    : a, c 
 {
     // Change the value of a to get different result
+    var a, c;
     a = 1;
     c = 0;
 

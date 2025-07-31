@@ -1,0 +1,7 @@
+var 
+    HUMAN_NAME = 0,
+    HUMAN_AGE  = 1,
+    HUMAN_WHAT = 2;
+
+function main() {
+}

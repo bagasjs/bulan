@@ -1,6 +1,6 @@
 function main() 
-    : a, b, c
 {
+    var a, b, c;
     extern printf;
     a = 0;
     b = 1;

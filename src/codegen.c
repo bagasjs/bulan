@@ -41,20 +41,20 @@ void optimize_program(Program *prog)
 {
 }
 
-Inst *push_inst(Function *fn, Inst inst)
+Inst *func_push_inst(Function *fn, Inst inst)
 {
     nob_da_append(fn, inst);
     return &fn->items[fn->count - 1];
 }
 
-size_t alloc_local(Function *fn)
+size_t func_alloc_local(Function *fn)
 {
     size_t local = fn->locals_count;
     fn->locals_count += 1;
     return local;
 }
 
-size_t alloc_label(Function *fn)
+size_t func_alloc_label(Function *fn)
 {
     size_t label = fn->labels_count;
     fn->labels_count += 1;
