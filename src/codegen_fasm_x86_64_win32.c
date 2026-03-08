@@ -67,8 +67,8 @@ static bool load_arg(Nob_String_Builder *output, Inst inst, int arg_index, const
 
 bool generate_fasm_x86_64_win32_function(Nob_String_Builder *output, Function *fn)
 {
-    nob_sb_appendf(output, "public %s\n", fn->name);
-    nob_sb_appendf(output, "%s:\n", fn->name);
+    nob_sb_appendf(output, "public %s as '_%s'\n", fn->name, fn->name);
+    nob_sb_appendf(output, "_%s:\n", fn->name);
     nob_sb_appendf(output, "    push rbp\n");
     nob_sb_appendf(output, "    mov  rbp, rsp\n");
     // Align stack to 16 byte for windows only

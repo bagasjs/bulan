@@ -1,4 +1,5 @@
-#define NOB_IMPLEMENTATION
+#define NOB_EXPERIMENTAL
+#define NOB_EXPERIMENTAL_DELETE_OLD
 #include "./thirdparty/nob.h"
 
 #define BUILD_DIR "build"
